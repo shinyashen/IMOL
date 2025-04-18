@@ -90,9 +90,15 @@ Bench4BL_options = {
     "path": "./Bench4BL",
 }
 
+# data collection config definition
+data_section = "data"
+data_options = {
+    "path": "../data",
+}
+
 # all config zip to dict
 option_dict = {}
-section_prefix = ["Bench4BL"]
+section_prefix = ["Bench4BL", "data"]
 section_suffix = "_section"
 options_suffix = "_options"
 for section_id in range(len(section_prefix)):

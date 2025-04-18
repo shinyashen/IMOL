@@ -175,3 +175,4 @@ cython_debug/
 
 # My configuration file
 /scripts/config.ini
+/data
