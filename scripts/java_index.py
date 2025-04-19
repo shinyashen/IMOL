@@ -135,7 +135,7 @@ if __name__ == '__main__':
                         index_dict = load_src_file(group, project, version, java_list)
                         for java in java_list:
                             if index_dict[java] is None:
-                                print(f'WARNING: {group}/{project}/{version} {java} not found!')
+                                print(f'WARNING: {group}/{project}/{version} Bug{bug_id}:{java} not found!')
                             else:
                                 copypath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_files', bug_id)
                                 if not os.path.exists(copypath):
