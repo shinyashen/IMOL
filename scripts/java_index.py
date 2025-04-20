@@ -1,8 +1,10 @@
 import os
+import shutil
+import re
+from typing import List, Dict, Optional
 
 import config as conf
-import shutil
-from typing import List, Dict, Optional
+
 
 techs = ['BugLocator', 'BRTracer', 'BLIA']
 groups = ['Apache', 'Wildfly', 'Spring']
@@ -117,11 +119,57 @@ def load_src_file(_group, _project, _version, _filelist):
     return locator.find_files(_filelist)
 
 
+def search_java_file(_group, _project, _version, _name):
+    search_dir = os.path.join(getPath_base(_group, _project), 'sources', f'{_project}_{_version}'.replace(".", "_"))
+    matched_files = []
+    # 仅截取文件名
+    fqcn = _name[:-5]
+    parts = fqcn.split('.')
+    class_name = parts[-1]
+    _filename = class_name + '.java'
+
+    # 遍历目录树
+    for root, _, files in os.walk(search_dir):
+        for file in files:
+            if file == _filename:
+                matched_files.append(os.path.join(root, file))
+            elif file == 'ApplicationConversionServiceFactoryBean-template._java' and _filename == 'ApplicationConversionServiceFactoryBean-template.java': # HOW
+                matched_files.append(os.path.join(root, file))
+
+    # 处理搜索结果
+    if not matched_files:
+        print(f"未找到文件: {_filename}")
+        return None
+
+    # 多结果时让用户选择
+    if len(matched_files) > 1:
+        print("找到多个匹配项，请选择：")
+        for idx, path in enumerate(matched_files, 1):
+            print(f"[{idx}] {path}")
+        while True:
+            try:
+                choice = int(input("输入序号: "))
+                if 1 <= choice <= len(matched_files):
+                    selected_path = matched_files[choice-1]
+                    break
+                else:
+                    print("序号无效，请重新输入。")
+            except ValueError:
+                print("请输入数字序号。")
+    else:
+        selected_path = matched_files[0]
+
+    # 输出绝对路径
+    absolute_path = os.path.abspath(selected_path)
+    return absolute_path
+
+
 if __name__ == '__main__':
     for group in groups:
         for project in projects[group]:
             versions[project] = load_versions(group, project)
 
+    # 遍历所有项目和版本，加载并复制源文件
     for group in groups:
         for project in projects[group]:
             for version in versions[project]:
@@ -141,3 +189,49 @@ if __name__ == '__main__':
                                 if not os.path.exists(copypath):
                                     os.makedirs(copypath)
                                 shutil.copyfile(index_dict[java], os.path.join(copypath, java))
+
+    # 针对ROO项目的特殊处理，处理奇怪的文件名
+    # 编译正则表达式模式，匹配Java文件名
+    # pattern = re.compile(
+    #     r'^WARNING:\s+'          # 日志头
+    #     r'([a-zA-Z]+)/'          # group (字母)
+    #     r'([a-zA-Z]+)/'          # project (字母)
+    #     r'([\d.]+)'              # version (数字+小数点)
+    #     r'\s+Bug(\d+):'          # bug_id (纯数字)
+    #     r'([a-zA-Z0-9_.$\-]+)'   # java_file (支持_、.、$等合法字符)
+    #     r'\s+not found!$'        # 日志结尾
+    # )
+
+    # 存储提取结果的字典列表
+    # extracted_data = []
+
+    # 读取并处理文件
+    # with open(os.path.join(datapath, 'notfound_files.txt'), 'r') as file:
+    #     for line_number, line in enumerate(file, 1):
+    #         line = line.strip()
+    #         match = pattern.match(line)
+
+    #         if not match:
+    #             print(f"警告：第{line_number}行格式异常，已跳过 | {line}")
+    #             continue
+
+    #         # 结构化存储提取结果
+    #         extracted_data.append({
+    #             "group": match.group(1),
+    #             "project": match.group(2),
+    #             "version": match.group(3),
+    #             "bug_id": match.group(4),
+    #             "java_file": match.group(5)
+    #         })
+
+    # 遍历搜索文件名，有需要手动选择
+    # for item in extracted_data:
+    #     print(f'{item['group']}/{item['project']}/{item['version']} Bug{item['bug_id']}:{item['java_file']}')
+    #     newpath = search_java_file(item['group'], item['project'], item['version'], item['java_file'])
+    #     copypath = os.path.join(datapath, item['group'], item['project'], item['version'], 'recommended_IRBL', 'combined_files', item['bug_id'])
+    #     if not os.path.exists(copypath):
+    #         os.makedirs(copypath)
+    #     print(newpath)
+    #     print(os.path.join(copypath, item['java_file']))
+    #     print()
+    #     shutil.copyfile(newpath, os.path.join(copypath, item['java_file']))
