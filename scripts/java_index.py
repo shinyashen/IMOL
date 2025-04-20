@@ -170,25 +170,25 @@ if __name__ == '__main__':
             versions[project] = load_versions(group, project)
 
     # 遍历所有项目和版本，加载并复制源文件
-    # for group in groups:
-    #     for project in projects[group]:
-    #         for version in versions[project]:
-    #             loadpath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_IRBL')
-    #             if os.path.exists(loadpath):
-    #                 for file in os.listdir(loadpath):
-    #                     bug_id = os.path.splitext(file)[0]
-    #                     with open(os.path.join(loadpath, file), 'r', encoding='utf-8') as f:
-    #                         file_list = f.readlines()
-    #                     java_list = [line.strip() for line in file_list]
-    #                     index_dict = load_src_file(group, project, version, java_list)
-    #                     for java in java_list:
-    #                         if index_dict[java] is None:
-    #                             print(f'WARNING: {group}/{project}/{version} Bug{bug_id}:{java} not found!')
-    #                         else:
-    #                             copypath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_files', bug_id)
-    #                             if not os.path.exists(copypath):
-    #                                 os.makedirs(copypath)
-    #                             shutil.copyfile(index_dict[java], os.path.join(copypath, java))
+    for group in groups:
+        for project in projects[group]:
+            for version in versions[project]:
+                loadpath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_IRBL')
+                if os.path.exists(loadpath):
+                    for file in os.listdir(loadpath):
+                        bug_id = os.path.splitext(file)[0]
+                        with open(os.path.join(loadpath, file), 'r', encoding='utf-8') as f:
+                            file_list = f.readlines()
+                        java_list = [line.strip() for line in file_list]
+                        index_dict = load_src_file(group, project, version, java_list)
+                        for java in java_list:
+                            if index_dict[java] is None:
+                                print(f'WARNING: {group}/{project}/{version} Bug{bug_id}:{java} not found!')
+                            else:
+                                copypath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_files', bug_id)
+                                if not os.path.exists(copypath):
+                                    os.makedirs(copypath)
+                                shutil.copyfile(index_dict[java], os.path.join(copypath, java))
 
     # 针对ROO项目的特殊处理，处理奇怪的文件名
     # 编译正则表达式模式，匹配Java文件名
