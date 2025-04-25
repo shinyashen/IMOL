@@ -41,8 +41,7 @@ def save_filelist(_tech, _group, _project, _version, _id, _file, _length):
     if not os.path.exists(savepath):
         os.makedirs(savepath)
     df = pd.read_csv(_file, sep='\\s+', header=None, encoding='utf-8', nrows=_length)
-    df.iloc[:_length, 2].to_csv(os.path.join(
-        savepath, f'{_id}.txt'), index=False, header=None, encoding='utf-8')
+    df.iloc[:_length, 2].to_csv(os.path.join(savepath, f'{_id}.txt'), index=False, header=None, encoding='utf-8')
 
 
 def save_buglist(_group, _project, _version, _xml):
@@ -97,20 +96,37 @@ if __name__ == '__main__':
                 idpath = os.path.join(datapath, group, project, version, 'recommended_IRBL', techs[0])
                 if os.path.exists(idpath):
                     for file in os.listdir(idpath):
-                        combined_set = set()
+                        lists = []
                         for tech in techs:
                             loadpath = os.path.join(datapath, group, project, version, 'recommended_IRBL', tech)
                             if os.path.exists(os.path.join(loadpath, file)):
                                 with open(os.path.join(loadpath, file), 'r', encoding='utf-8') as f:
                                     file_list = f.readlines()
-                                    combined_set.update(file_list)
+                                lists.append([line.strip() for line in file_list])
                             else: # TODO: 为啥会少文件
                                 print(f'WARNING: {group}/{project}/{version} {tech}/{file} not exists!')
+                                lists.append([])
+
+                        presence_dict = {}
+                        # 动态构建存在标记字典
+                        for list_idx, lst in enumerate(lists):
+                            for rank, elem in enumerate(lst):
+                                if elem not in presence_dict:
+                                    # 初始化标记为全零列表，长度等于列表数量
+                                    presence_dict[elem] = [0] * len(lists)
+                                presence_dict[elem][list_idx] = (20.0 - rank) / 20.0  # 标记当前列表存在
+
+                        # 创建DataFrame并排序索引
+                        df = pd.DataFrame.from_dict(
+                            presence_dict,
+                            orient='index',
+                            columns=[f'List{i+1}' for i in range(len(lists))]
+                        ).sort_index().reset_index().rename(columns={'index': 'filename'})
+
                         savepath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_IRBL')
                         if not os.path.exists(savepath):
                             os.makedirs(savepath)
-                        with open(os.path.join(savepath, file), 'w', encoding='utf-8') as f:
-                            f.writelines(combined_set)
+                        df.to_csv(os.path.join(savepath, file), index=False, header=False)
 
     # 获取bug文件列表
     for group in groups:
@@ -122,3 +138,27 @@ if __name__ == '__main__':
                     with open(file, 'r', encoding='utf-8') as f:
                         xml_content = f.read()
                         save_buglist(group, project, version, xml_content)
+
+    # 计算IRBL赋权后的合并文件列表
+    for group in groups:
+        for project in projects[group]:
+            for version in versions[project]:
+                idpath = os.path.join(datapath, group, project, version, 'recommended_IRBL', techs[0])
+                if os.path.exists(idpath):
+                    for file in os.listdir(idpath):
+                        combined_file = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_IRBL', file)
+                        df = pd.read_csv(combined_file, header=None)
+                        df[df.columns[1:]] = df[df.columns[1:]].astype(float)
+
+                        with open(os.path.join(datapath, 'IRBL_weight.txt'), 'r', encoding='utf-8') as f:
+                            weight_list = f.readlines()
+                        weights = [float(line.strip()) for line in weight_list]  # IRBL权重列表
+                        df.iloc[:, 1:len(weights) + 1] = df.iloc[:, 1:len(weights) + 1] * weights  # 赋权
+                        df[len(weights) + 1] = df.iloc[:, 1:len(weights) + 1].sum(axis=1)  # 计算总分
+                        result_df = df.iloc[:, [0, len(weights) + 1]].copy()  # 只保留文件名和总分
+                        result_df = result_df.sort_values(result_df.columns[1], ascending=False)  # 按照总分降序排序
+
+                        savepath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'weighted_IRBL')
+                        if not os.path.exists(savepath):
+                            os.makedirs(savepath)
+                        result_df.to_csv(os.path.join(savepath, file), index=False, header=False)

@@ -5,6 +5,7 @@ import config as conf
 
 
 techs = ['BugLocator', 'BRTracer', 'BLIA']
+proctechs = ['combined_IRBL', 'weighted_IRBL']
 groups = ['Apache', 'Wildfly', 'Spring']
 projects = {
     'Apache': ['CAMEL', 'HBASE', 'HIVE'],
@@ -22,6 +23,7 @@ project_source_files = {
 versions = {}
 answers = {}
 bug_counts = {}
+report_count = 0
 
 Bench4BL_path = conf.read_config([conf.Bench4BL_section], "path", None)
 Bench4BL_datapath = os.path.join(Bench4BL_path, 'data')
@@ -46,7 +48,7 @@ def load_answers(_group, _project):
 
 
 def count_bug():
-    bug_counts['all'] = 0
+    bug_counts['/'] = 0  # bug_counts['all']
     for group in groups:
         for project in projects[group]:
             bug_counts[project] = 0
@@ -54,10 +56,10 @@ def count_bug():
                 loadpath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'combined_IRBL')
                 if os.path.exists(loadpath):
                     bug_counts[project] += len(os.listdir(loadpath))
-            bug_counts['all'] += bug_counts[project]
+            bug_counts['/'] += bug_counts[project]
 
 
-def calculate_metrics(ordered_list, target_list, _tech, _group, _project, _version, _id):
+def calculate_metrics(ordered_list, target_list, _tech, _group, _project, _version, _bugid):
     """计算单个查询的AP、RR及所有命中行"""
     target_set = set(target_list)
     hits = []
@@ -85,13 +87,13 @@ def calculate_metrics(ordered_list, target_list, _tech, _group, _project, _versi
 
         # 记录单行数据（此时AP和RR尚未计算完成）
         query_rows.append({
-            "key": f'{_project}{str(_id).zfill(5)}'.lower(),
+            "key": f'{_project}{str(_bugid).zfill(5)}'.lower(),
             "Approach": _tech,
             "Group": _group,
             "Project": _project,
-            "BugID": _id,
+            "BugID": _bugid,
             "Version": f'{_project}_{_version}'.replace(".", "_"),
-            "AnsFileCount": answers[_project][int(_id)],
+            "AnsFileCount": answers[_project][int(_bugid)],
             "File": file,
             "Rank": original_rank,
             # TODO: Scores
@@ -119,60 +121,66 @@ def calculate_metrics(ordered_list, target_list, _tech, _group, _project, _versi
     return df_query
 
 
-def cal_version_res(_tech, _group, _project, _version):
+def cal_version_res(_tech, _group, _project, _version, _mode=None):
     loadpart = ''  # TODO: LLM part
-    if _tech in techs or _tech == 'combined_IRBL':
+    if _tech in techs or _tech in proctechs:
         loadpart = 'recommended_IRBL'
-    loadpath = os.path.join(datapath, _group, _project,_version, loadpart, _tech)
+    loadpath = os.path.join(datapath, _group, _project, _version, loadpart, _tech)
     df_query = pd.DataFrame()
     query_num = 0
 
-    for file in os.listdir(loadpath):
-        query_num += 1
-        bug_id = os.path.splitext(file)[0]
-        with open(os.path.join(loadpath, file), 'r', encoding='utf-8') as f:
-            file_list = f.readlines()
-        java_list = [line.strip() for line in file_list]
-        bugpath = os.path.join(os.path.join(
-            datapath, _group, _project, _version, 'buglist', file))
-        with open(bugpath, 'r', encoding='utf-8') as f:
-            file_list = f.readlines()
-        bug_list = [line.strip() for line in file_list]
+    if os.path.exists(loadpath):
+        for file in os.listdir(loadpath):
+            global report_count
+            report_count += 1
+            if _mode == 'B200' and report_count > 200: #  只统计前200份报告
+                break
+            if _mode == 'P200' and report_count <= 200: #  只统计200份以后的报告
+                continue
+            bug_id = os.path.splitext(file)[0]
+            java_list = pd.read_csv(os.path.join(loadpath, file), header=None).iloc[:, 0].tolist()
+            bugpath = os.path.join(os.path.join(datapath, _group, _project, _version, 'buglist', file))
+            with open(bugpath, 'r', encoding='utf-8') as f:
+                file_list = f.readlines()
+            bug_list = [line.strip() for line in file_list]
 
-        df = calculate_metrics(java_list, bug_list, _tech, _group, _project, _version, bug_id)
-        df_query = pd.concat([df_query, df], ignore_index=True)
+            df = calculate_metrics(java_list, bug_list, _tech, _group, _project, _version, bug_id)
+            df_query = pd.concat([df_query, df], ignore_index=True)
+            query_num += 1
 
     return df_query, query_num
 
 
-def cal_project_res(_tech, _group, _project):
+def cal_project_res(_tech, _group, _project, _mode=None):
     df_query = pd.DataFrame()
     query_num = 0
 
     for version in versions[_project]:
-        a, b = cal_version_res(_tech, _group, _project, version)
+        a, b = cal_version_res(_tech, _group, _project, version, _mode)
         df_query = pd.concat([df_query, a], ignore_index=True)
         query_num += b
 
     return df_query, query_num
 
 
-def cal_tech_res(_tech):
+def cal_tech_res(_tech, _mode=None):
     df_query = pd.DataFrame()
     query_num = 0
 
     for group in groups:
         for project in projects[group]:
-            a, b = cal_project_res(_tech, group, project)
+            global report_count
+            report_count = 0
+            a, b = cal_project_res(_tech, group, project, _mode)
             df_query = pd.concat([df_query, a], ignore_index=True)
             query_num += b
 
     return df_query, query_num
 
 
-def cal_res(_techlist):
+def cal_res(_techlist, _mode=None):
     for tech in _techlist:
-        a, b = cal_tech_res(tech)
+        a, b = cal_tech_res(tech, _mode)
         yield tech, a, b
 
 
@@ -181,23 +189,22 @@ def res_analysis(tech, df_query, query_num, _isAll=True):
     top1_count = ((df_query['Top1'] != 0) & (df_query['AnsOrder'] == 1)).sum()
     top5_count = ((df_query['Top5'] != 0) & (df_query['AnsOrder'] == 1)).sum()
     top10_count = ((df_query['Top10'] != 0) & (df_query['AnsOrder'] == 1)).sum()
-    bug_count = bug_counts['all'] if _isAll else bug_counts[project]
 
     res_dict = {
         "Technique": tech,
         "Group": 'All' if _isAll else df_query['Group'].unique()[0],
         "Project": project,
         "Source Files": project_source_files[project],
-        "Bug Count": bug_count,
+        "Vaild Bug Count": query_num,
         "Recommended BugCount": len(set(df_query['key'])),
         "Top1 Count": top1_count,
         "Top5 Count": top5_count,
         "Top10 Count": top10_count,
-        "Top1": top1_count / bug_count if bug_count > 0 else 0.0,
-        "Top5": top5_count / bug_count if bug_count > 0 else 0.0,
-        "Top10": top10_count / bug_count if bug_count > 0 else 0.0,
-        "MAP": df_query['AP'].sum() / bug_count if bug_count > 0 else 0.0,
-        "MRR": df_query['TP'].sum() / bug_count if bug_count > 0 else 0.0,
+        "Top1": top1_count / query_num if query_num > 0 else 0.0,
+        "Top5": top5_count / query_num if query_num > 0 else 0.0,
+        "Top10": top10_count / query_num if query_num > 0 else 0.0,
+        "MAP": df_query['AP'].sum() / query_num if query_num > 0 else 0.0,
+        "MRR": df_query['TP'].sum() / query_num if query_num > 0 else 0.0,
     }
 
     return res_dict
@@ -213,10 +220,65 @@ if __name__ == '__main__':
             answers[project] = dict(sorted(_answers[project].items(), key=lambda x: x[0]))
     count_bug()
 
-    result = []
+    # 计算3种IRBL
+    name1 = 'IRBL20'
+    result1 = []
+    MAPs1 = []
+    MRRs1 = []
+    df1 = pd.DataFrame()
+    for tech in techs:
+        for group in groups:
+            for project in projects[group]:
+                report_count = 0
+                a, b = cal_project_res(tech, group, project)
+                result1.append(res_analysis(tech, a, b, False))
     for a, b, c in cal_res(techs):
-        result.append(res_analysis(a, b, c))
-    df = pd.DataFrame(result)
+        result1.append(res_analysis(a, b, c))
+        df1 = pd.concat([df1, b], ignore_index=True)
+    df2 = pd.DataFrame(result1)
+    # 输出CSV
+    df1.to_csv(os.path.join(datapath, f"{name1}_raw.csv"), index=False)
+    df2.to_csv(os.path.join(datapath, f"{name1}.csv"), index=False)
+
+    # 计算3种IRBL前200个数据
+    name1 = 'IRBL'
+    result1 = []
+    MAPs1 = []
+    MRRs1 = []
+    df1 = pd.DataFrame()
+    for a, b, c in cal_res(techs, 'B200'):
+        result1.append(res_analysis(a, b, c))
+        df1 = pd.concat([df1, b], ignore_index=True)
+    df2 = pd.DataFrame(result1)
+    # 输出CSV
+    df1.to_csv(os.path.join(datapath, f"{name1}_raw.csv"), index=False)
+    df2.to_csv(os.path.join(datapath, f"{name1}.csv"), index=False)
+
+    # 计算3种IRBL的MAP和MRR组成的权值
+    for i in range(len(result1)):
+        MAPs1.append(result1[i]['MAP'])
+        MRRs1.append(result1[i]['MRR'])
+    product_list = [(MAP / max(MAPs1)) * (MRR / max(MRRs1)) for MAP, MRR in zip(MAPs1, MRRs1)]
+    IRBL_weight = [str(i / (sum(product_list))) for i in product_list]
+    with open(os.path.join(datapath, 'IRBL_weight.txt'), 'w', encoding='utf-8') as f:
+        f.write('\n'.join(IRBL_weight))
+
+    # 计算加权IRBL的200报告以后数据
+    name2 = 'weighted_IRBL'
+    result2 = []
+    MAPs2 = []
+    MRRs2 = []
+    df3 = pd.DataFrame()
+    for group in groups:
+        for project in projects[group]:
+            report_count = 0
+            a, b = cal_project_res('weighted_IRBL', group, project, 'P200')
+            result2.append(res_analysis('weighted_IRBL', a, b, False))
+    for a, b, c in cal_res(['weighted_IRBL'], 'P200'):
+        result2.append(res_analysis(a, b, c))
+        df3 = pd.concat([df3, b], ignore_index=True)
+    df4 = pd.DataFrame(result2)
 
     # 输出CSV
-    df.to_csv(os.path.join(datapath, "query_metrics.csv"), index=False)
+    df3.to_csv(os.path.join(datapath, f"{name2}_raw.csv"), index=False)
+    df4.to_csv(os.path.join(datapath, f"{name2}.csv"), index=False)
