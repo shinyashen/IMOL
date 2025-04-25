@@ -240,12 +240,25 @@ if __name__ == '__main__':
     df1.to_csv(os.path.join(datapath, f"{name1}_raw.csv"), index=False)
     df2.to_csv(os.path.join(datapath, f"{name1}.csv"), index=False)
 
-    # 计算3种IRBL前200个数据
-    name1 = 'IRBL'
+    # 计算3种IRBL前200个数据，以及MAP和MRR组成的权值
+    name1 = 'IRBL_B200'
     result1 = []
     MAPs1 = []
     MRRs1 = []
     df1 = pd.DataFrame()
+    for tech in techs:
+        dict_map = {}
+        dict_mrr = {}
+        for group in groups:
+            for project in projects[group]:
+                report_count = 0
+                a, b = cal_project_res(tech, group, project, 'B200')
+                dict_res = res_analysis(tech, a, b, False)
+                dict_map[project] = dict_res['MAP']
+                dict_mrr[project] = dict_res['MRR']
+                result1.append(dict_res)
+        MAPs1.append(dict_map)
+        MRRs1.append(dict_mrr)
     for a, b, c in cal_res(techs, 'B200'):
         result1.append(res_analysis(a, b, c))
         df1 = pd.concat([df1, b], ignore_index=True)
@@ -254,14 +267,18 @@ if __name__ == '__main__':
     df1.to_csv(os.path.join(datapath, f"{name1}_raw.csv"), index=False)
     df2.to_csv(os.path.join(datapath, f"{name1}.csv"), index=False)
 
-    # 计算3种IRBL的MAP和MRR组成的权值
-    for i in range(len(result1)):
-        MAPs1.append(result1[i]['MAP'])
-        MRRs1.append(result1[i]['MRR'])
-    product_list = [(MAP / max(MAPs1)) * (MRR / max(MRRs1)) for MAP, MRR in zip(MAPs1, MRRs1)]
-    IRBL_weight = [str(i / (sum(product_list))) for i in product_list]
-    with open(os.path.join(datapath, 'IRBL_weight.txt'), 'w', encoding='utf-8') as f:
-        f.write('\n'.join(IRBL_weight))
+    df_MAP1 = pd.DataFrame(MAPs1)
+    df_MRR1 = pd.DataFrame(MRRs1)
+
+    for i in range(5):  # 5 projects
+        max_map = df_MAP1.iloc[:, i].max()
+        max_mrr = df_MRR1.iloc[:, i].max()
+        df_MAP1.iloc[:, i] = df_MAP1.iloc[:, i] / max_map
+        df_MRR1.iloc[:, i] = df_MRR1.iloc[:, i] / max_mrr
+    df_weight = df_MAP1 * df_MRR1
+    for i in range(5):  # 5 projects
+        df_weight.iloc[:, i] = df_weight.iloc[:, i] / df_weight.iloc[:, i].sum()
+    df_weight.to_csv(os.path.join(datapath, 'IRBL_weight.txt'), index=False, header=False)
 
     # 计算加权IRBL的200报告以后数据
     name2 = 'weighted_IRBL'

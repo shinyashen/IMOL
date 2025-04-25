@@ -140,6 +140,14 @@ if __name__ == '__main__':
                         save_buglist(group, project, version, xml_content)
 
     # 计算IRBL赋权后的合并文件列表
+    weights = {}
+    df_weights = pd.read_csv(os.path.join(datapath, 'IRBL_weight.txt'), header=None, encoding='utf-8')
+    index = 0
+    for group in groups:
+        for project in projects[group]:
+            weights[project] = df_weights.iloc[:, index].tolist()
+            index += 1
+
     for group in groups:
         for project in projects[group]:
             for version in versions[project]:
@@ -150,12 +158,10 @@ if __name__ == '__main__':
                         df = pd.read_csv(combined_file, header=None)
                         df[df.columns[1:]] = df[df.columns[1:]].astype(float)
 
-                        with open(os.path.join(datapath, 'IRBL_weight.txt'), 'r', encoding='utf-8') as f:
-                            weight_list = f.readlines()
-                        weights = [float(line.strip()) for line in weight_list]  # IRBL权重列表
-                        df.iloc[:, 1:len(weights) + 1] = df.iloc[:, 1:len(weights) + 1] * weights  # 赋权
-                        df[len(weights) + 1] = df.iloc[:, 1:len(weights) + 1].sum(axis=1)  # 计算总分
-                        result_df = df.iloc[:, [0, len(weights) + 1]].copy()  # 只保留文件名和总分
+                        index = len(weights[project]) + 1
+                        df.iloc[:, 1:index] = df.iloc[:, 1:index] * weights[project]  # 赋权
+                        df[index] = df.iloc[:, 1:index].sum(axis=1)  # 计算总分
+                        result_df = df.iloc[:, [0, index]].copy()  # 只保留文件名和总分
                         result_df = result_df.sort_values(result_df.columns[1], ascending=False)  # 按照总分降序排序
 
                         savepath = os.path.join(datapath, group, project, version, 'recommended_IRBL', 'weighted_IRBL')
