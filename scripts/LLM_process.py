@@ -95,7 +95,7 @@ def extract_issues(xml_content):
     item = root.find('channel').find('item')
 
     description_elem = item.find('description')
-    description_html = html.unescape(description_elem.text) if description_elem is not None else ""
+    description_html = html.unescape(description_elem.text) if description_elem is not None and description_elem.text is not None else ""
     description_clean = strip_html_tags(description_html)
 
     result = {
@@ -137,7 +137,7 @@ async def async_query_openai(sem: Semaphore, query_dict, prev_msg=None):
 
 
 # 返回所有请求的结果列表
-async def async_process_queries(queries, max_concurrent: int = 5):
+async def async_process_queries(queries, max_concurrent: int = 4):
     sem = Semaphore(max_concurrent)
     tasks = [async_query_openai(sem, query) for query in queries]
     return await asyncio.gather(*tasks)
@@ -204,7 +204,7 @@ def extract_keywords(bug_report: dict, report_type: str) -> List[str]:
     content = query_openai(dict)
     if "```json" in content:  # 清理JSON响应
         content = content.split("```json")[1].split("```")[0]
-    return json.loads(content.strip()).get("keywords", [])  # List
+    return [str(item) for item in json.loads(content.strip()).get("keywords", [])]
 
 
 def get_system_knowledge(report_type: str) -> str:
@@ -277,7 +277,7 @@ if __name__ == '__main__':
         for project in projects[group]:
             versions[project] = load_versions(group, project)
 
-    # 遍历所有项目和版本，加载并复制源文件
+    # 遍历所有项目和版本，加载相关源文件
     for group in groups:
         for project in projects[group]:
             for version in versions[project]:
@@ -293,7 +293,17 @@ if __name__ == '__main__':
                         with open(reportpath, 'r', encoding='utf-8') as f:
                             xml_content = f.read()
                         report_dict = extract_issues(xml_content)
-                        report_type = classify_bug_report(report_dict)  # 报告类型判断
+                        typepath = os.path.join(basicpath, model, 'type')
+                        if not os.path.exists(typepath):
+                            os.makedirs(typepath)
+                        if os.path.exists(os.path.join(typepath, f'{dir}.txt')):
+                            with open(os.path.join(typepath, f'{dir}.txt'), 'r', encoding='utf-8') as f:
+                                report_type = f.read()
+                        else:
+                            report_type = classify_bug_report(report_dict)  # 报告类型判断
+                            with open(os.path.join(typepath, f'{dir}.txt'), 'w', encoding='utf-8') as f:
+                                f.write(report_type)
+                        print(f'类型为{report_type}...', end="")
                         print('ok')
 
                         # 关键词总结
