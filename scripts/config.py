@@ -96,9 +96,16 @@ data_options = {
     "path": "../data",
 }
 
+# LLM config definition
+LLM_section = "LLM"
+LLM_options = {
+    "api_key": "your_api_key",
+    "base_url": "your_base_url",
+}
+
 # all config zip to dict
 option_dict = {}
-section_prefix = ["Bench4BL", "data"]
+section_prefix = ["Bench4BL", "data", "LLM"]
 section_suffix = "_section"
 options_suffix = "_options"
 for section_id in range(len(section_prefix)):

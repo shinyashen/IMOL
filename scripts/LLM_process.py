@@ -1,0 +1,350 @@
+import os
+import html
+import asyncio
+import json
+import tree_sitter_java as tsjava
+import xml.etree.ElementTree as ET
+import pandas as pd
+from tree_sitter import Language, Parser
+from openai import OpenAI, AsyncOpenAI
+from bs4 import BeautifulSoup
+from typing import List
+from asyncio import Semaphore
+
+import config as conf
+
+
+groups = ['Apache', 'Wildfly', 'Spring']
+projects = {
+    'Apache': ['CAMEL', 'HBASE', 'HIVE'],
+    'Wildfly': ['WFLY'],
+    'Spring': ['ROO']
+}
+versions = {}
+report_types = ['PE', 'ST', 'NL']
+
+JAVA_LANGUAGE = Language(tsjava.language())
+parser = Parser(JAVA_LANGUAGE)
+parse_type = {
+    'class_declaration': 'class_body',
+    'interface_declaration': 'interface_body',
+    'annotation_declaration': 'annotation_body',
+    'enum_declaration': 'enum_body',
+    'record_declaration': 'record_body',
+    'module_declaration': 'module_body'
+}
+unimportant_type = ['line_comment', 'block_comment']
+
+LLM_models = ['qwen-max-latest', 'deepseek-v3']
+client = OpenAI(
+    base_url=conf.read_config([conf.LLM_section], "base_url", None),
+    api_key=conf.read_config([conf.LLM_section], "api_key", None)
+)
+aclient = AsyncOpenAI(
+    base_url=conf.read_config([conf.LLM_section], "base_url", None),
+    api_key=conf.read_config([conf.LLM_section], "api_key", None)
+)
+is_relevant = 0
+
+Bench4BL_path = conf.read_config([conf.Bench4BL_section], "path", None)
+Bench4BL_datapath = os.path.join(Bench4BL_path, 'data')
+datapath = conf.read_config([conf.data_section], "path", None)
+
+
+def getPath_base(_group, _project):
+    return os.path.join(Bench4BL_datapath, _group, _project)
+
+
+def load_versions(_group, _project):
+    f = open(os.path.join(getPath_base(_group, _project), 'versions.txt'), 'r', encoding='utf-8')
+    text = f.read()
+    f.close()
+    data = eval(text)
+
+    return data[_project]
+
+
+# 代码文件分块处理
+def split_code(code):
+    tree = parser.parse(bytes(code, "utf8"))
+    root_node = tree.root_node
+
+    for child1 in root_node.children:
+        if child1.type in parse_type.keys():
+            for child2 in child1.children:
+                if child2.type == 'identifier':
+                    class_name = child2.text.decode()
+                elif child2.type == parse_type[child1.type]:
+                    for child3 in child2.children:
+                        if child3.type in unimportant_type:
+                            continue
+                        yield class_name, extract_node(child3, code)
+
+
+def extract_node(node, code):
+    return code[node.start_byte:node.end_byte]
+
+
+# 缺陷报告处理
+def strip_html_tags(html_content):
+    soup = BeautifulSoup(html_content, "html.parser")
+    return soup.get_text(separator=" ", strip=True)
+
+def extract_issues(xml_content):
+    root = ET.fromstring(xml_content)
+    item = root.find('channel').find('item')
+
+    description_elem = item.find('description')
+    description_html = html.unescape(description_elem.text) if description_elem is not None else ""
+    description_clean = strip_html_tags(description_html)
+
+    result = {
+        'title': html.unescape(item.find('title').text),
+        'summary': html.unescape(item.find('summary').text),
+        'description': description_clean
+    }
+
+    return result
+
+
+# LLM处理函数
+
+# 处理单个LLM请求，返回单个结果
+def query_openai(query_dict, prev_msg=None):
+    msg_list = prev_msg if prev_msg else []
+    if prev_msg is None:
+        msg_list.append(query_dict['system'])
+    msg_list.append(query_dict['user'])
+    completion = client.chat.completions.create(
+        model=query_dict['model'],
+        messages=msg_list
+    )
+    return completion.choices[0].message.content
+
+
+# 处理单个LLM请求，异步返回单个结果
+async def async_query_openai(sem: Semaphore, query_dict, prev_msg=None):
+    async with sem:
+        msg_list = prev_msg if prev_msg else []
+        if prev_msg is None:
+            msg_list.append(query_dict['system'])
+        msg_list.append(query_dict['user'])
+        completion = await aclient.chat.completions.create(
+            model=query_dict['model'],
+            messages=msg_list
+        )
+        return completion.choices[0].message.content
+
+
+# 返回所有请求的结果列表
+async def async_process_queries(queries, max_concurrent: int = 5):
+    sem = Semaphore(max_concurrent)
+    tasks = [async_query_openai(sem, query) for query in queries]
+    return await asyncio.gather(*tasks)
+
+
+def classify_bug_report(bug_report: dict):
+    """将缺陷报告分类为 PE/ST/NL"""
+    system = {
+        "role": "system",
+        "content": """
+        你是一个缺陷报告分类器，请判断输入内容类型：
+        - PE（含编程实体）：包含类名、方法名、变量名等代码元素
+        - ST（含堆栈跟踪）：包含异常堆栈信息（如 at com.example.Class.method(File.java:123)）
+        - NL（纯自然语言）：仅用自然语言描述问题，无具体代码元素
+        只需返回 PE/ST/NL 中的一个，不要解释。
+        """
+    }
+    user = {
+        "role": "user",
+        "content": f"缺陷报告内容:\n标题:{bug_report['title']}\n内容总结:{bug_report['summary']}\n报告描述：{bug_report['description']}"
+    }
+    dict = {
+        'model': 'qwen-max-latest',
+        'system': system,
+        'user': user
+    }
+
+    result = query_openai(dict).strip().upper()  # 确保返回大写
+    for type in report_types:
+        if type in result:
+            return type
+    return 'NL'  # LLM返回结果无法处理
+
+
+def extract_keywords(bug_report: dict, report_type: str) -> List[str]:
+    """根据报告类型提取关键词"""
+    type_prompt = {
+        "PE": "提取编程实体（类名、方法名、变量名）",
+        "ST": "提取异常类型、代码文件路径、行号",
+        "NL": "提取动词短语和技术术语（如'内存泄漏'）。如果没有明确的动词短语或技术术语，请尝试从内容概括出相应的术语。"
+    }[report_type]
+
+    system = {
+        "role": "system",
+        "content": f"""
+        你是一个信息提取专家，请从缺陷报告中：
+        1. {type_prompt}
+        2. 排除无关词汇（如用户描述的情感词）
+        3. 输出JSON数组：{{"keywords": [...]}}
+        4. 项目名称与报告编号不包括在输出列表中
+        只需返回标准JSON字符串，不要解释。
+        """
+    }
+    user = {
+        "role": "user",
+        "content": f"缺陷报告内容:\n标题:{bug_report['title']}\n内容总结:{bug_report['summary']}\n报告描述:{bug_report['description']}"
+    }
+    dict = {
+        'model': 'qwen-max-latest',
+        'system': system,
+        'user': user
+    }
+
+    content = query_openai(dict)
+    if "```json" in content:  # 清理JSON响应
+        content = content.split("```json")[1].split("```")[0]
+    return json.loads(content.strip()).get("keywords", [])  # List
+
+
+def get_system_knowledge(report_type: str) -> str:
+    """根据报告类型返回对应的系统知识"""
+    knowledge_map = {
+        "PE": """
+        你正在分析包含编程实体的缺陷报告，需特别注意：
+        1. 识别代码块中的特定类/方法/变量名
+        2. 检查参数传递、对象初始化是否正确
+        3. 验证访问修饰符（如 private/public）是否合理
+        """,
+        "ST": """
+        你正在分析包含堆栈跟踪的缺陷报告，需特别注意：
+        1. 判断代码块是否为堆栈中提到的代码文件
+        2. 分析异常传播路径（从底层方法到入口）
+        3. 检查异常发生时的上下文变量状态
+        """,
+        "NL": """
+        你正在分析纯自然语言描述的缺陷报告，需特别注意：
+        1. 通过语义推理猜测可能的缺陷代码位置
+        2. 结合常见错误模式（如空指针、越界）分析
+        3. 优先检查与缺陷报告相关的代码逻辑或函数调用
+        """
+    }
+    return knowledge_map.get(report_type, "通用代码缺陷分析")
+
+
+# 异步处理代码块
+async def analyze_chunks(report, type, chunks):
+    queries = []
+    for chunk in chunks:
+        system = {
+            "role": "system",
+            "content": f"""
+                {get_system_knowledge(type)}
+
+                通用规则：
+                1. 输出只有 0 或 1 数字，0 表示代码块与报告无关，1 表示代码块与报告相关。
+                2. 只需返回 0 或 1 数字，不要解释。
+                """
+        }
+        user = {
+            "role": "user",
+            "content": f"""
+            [缺陷报告]
+            标题:{report['title']}
+            内容总结:{report['summary']}
+            报告描述:{report['description']}
+
+            [待分析代码块]
+            文件名:{chunk['filename']}
+            代码块所在类名:{chunk['class']}
+            代码块内容:{chunk['code']}
+            """,
+        }
+        dict = {
+            'model': 'qwen-max-latest',
+            'system': system,
+            'user': user
+        }
+        queries.append(dict)
+
+    results = await async_process_queries(queries)
+    global is_relevant  # 使用全局变量存储分析结果
+    is_relevant = 1 if '1' in results else 0
+
+
+if __name__ == '__main__':
+    for group in groups:
+        for project in projects[group]:
+            versions[project] = load_versions(group, project)
+
+    # 遍历所有项目和版本，加载并复制源文件
+    for group in groups:
+        for project in projects[group]:
+            for version in versions[project]:
+                basicpath = os.path.join(datapath, group, project, version)
+                loadpath = os.path.join(basicpath, 'recommended_IRBL', 'combined_files')
+                if os.path.exists(loadpath):
+                    for dir in os.listdir(loadpath):
+                        print(f'Processing {group}/{project}/{version}/{dir}...')
+                        # 缺陷报告处理
+                        print(f'处理缺陷报告...', end="")
+                        model = 'qwen-max-latest'
+                        reportpath = os.path.join(Bench4BL_datapath, group, project, 'bugrepo', 'bugs', f'{project}-{dir}.xml')
+                        with open(reportpath, 'r', encoding='utf-8') as f:
+                            xml_content = f.read()
+                        report_dict = extract_issues(xml_content)
+                        report_type = classify_bug_report(report_dict)  # 报告类型判断
+                        print('ok')
+
+                        # 关键词总结
+                        print(f'总结关键词...', end="")
+                        keywordpath = os.path.join(basicpath, model, 'keywords')
+                        if not os.path.exists(keywordpath):
+                            os.makedirs(keywordpath)
+                        if not os.path.exists(os.path.join(keywordpath, f'{dir}.txt')):
+                            report_keywords = extract_keywords(report_dict, report_type)
+                            with open(os.path.join(keywordpath, f'{dir}.txt'), 'w', encoding='utf-8') as f:
+                                f.write('\n'.join(report_keywords))
+                        else:
+                            print('文件已存在，跳过分析...', end="")
+                        print('ok')
+
+                        # 对每个代码文件进行分析
+                        filepath = os.path.join(loadpath, dir)
+                        savepath = os.path.join(basicpath, model, 'relevance')
+                        if not os.path.exists(savepath):
+                            os.makedirs(savepath)
+
+                        if not os.path.exists(os.path.join(savepath, f"{dir}.txt")):
+                            result_list = []
+                            for file in os.listdir(filepath):
+                                print(f"处理文件{file}...", end="")
+                                with open(os.path.join(filepath, file), 'r', encoding='utf-8') as f:
+                                    code = f.read()
+
+                                # 分割代码
+                                chunks = []
+                                for name, splited_code in split_code(code):
+                                    chunk = {
+                                        'filename': file,
+                                        'class': name,
+                                        'code': splited_code
+                                    }
+                                    chunks.append(chunk)
+                                if (len(chunks) == 0):
+                                    print(f'Warning: {project}/{version}/{dir} {file}解析代码块长度为0!', end="")
+
+                                # 异步执行
+                                print(f"LLM分析相关度...", end="")
+                                asyncio.run(analyze_chunks(report_dict, report_type, chunks))
+                                result_list.append([file, is_relevant])
+                                print(f"ok: {'不' if is_relevant == 0 else ''}相关")
+
+
+                            df = pd.DataFrame(result_list)
+                            df.to_csv(os.path.join(savepath, f"{dir}.txt"), index=False, header=False, encoding='utf-8')
+
+                        else:
+                            print('文件已存在，跳过分析...')
+
+                        print(f'{group}/{project}/{version}/{dir}处理完成！\n')
