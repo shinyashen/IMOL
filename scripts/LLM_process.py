@@ -35,7 +35,11 @@ parse_type = {
 }
 unimportant_type = ['line_comment', 'block_comment']
 
-LLM_models = ['qwen-max-latest', 'deepseek-v3']
+LLM_models = {
+    'meta-llama/Meta-Llama-3-8B-Instruct': 'Meta-Llama-3-8B-Instruct',
+    'deepseek-ai/DeepSeek-R1-Distill-Llama-8B': 'DeepSeek-R1-Distill-Llama-8B',
+    'Qwen/Qwen3-8B': 'Qwen3-8B'
+}
 client = OpenAI(
     base_url=conf.read_config([conf.LLM_section], "base_url", None),
     api_key=conf.read_config([conf.LLM_section], "api_key", None)
@@ -196,7 +200,7 @@ def extract_keywords(bug_report: dict, report_type: str) -> List[str]:
         "content": f"缺陷报告内容:\n标题:{bug_report['title']}\n内容总结:{bug_report['summary']}\n报告描述:{bug_report['description']}"
     }
     dict = {
-        'model': 'qwen-max-latest',
+        'model': 'Qwen/Qwen3-8B',
         'system': system,
         'user': user
     }
@@ -288,15 +292,16 @@ if __name__ == '__main__':
                         print(f'Processing {group}/{project}/{version}/{dir}...')
                         # 缺陷报告处理
                         print(f'处理缺陷报告...', end="")
-                        model = 'qwen-max-latest'
+                        model = 'Qwen/Qwen3-8B'
                         reportpath = os.path.join(Bench4BL_datapath, group, project, 'bugrepo', 'bugs', f'{project}-{dir}.xml')
                         with open(reportpath, 'r', encoding='utf-8') as f:
                             xml_content = f.read()
                         report_dict = extract_issues(xml_content)
-                        typepath = os.path.join(basicpath, model, 'type')
+                        typepath = os.path.join(basicpath, 'qwen-max-latest', 'type')
                         if not os.path.exists(typepath):
                             os.makedirs(typepath)
                         if os.path.exists(os.path.join(typepath, f'{dir}.txt')):
+                            print('文件已存在，跳过分析...', end="")
                             with open(os.path.join(typepath, f'{dir}.txt'), 'r', encoding='utf-8') as f:
                                 report_type = f.read()
                         else:
@@ -306,22 +311,22 @@ if __name__ == '__main__':
                         print(f'类型为{report_type}...', end="")
                         print('ok')
 
-                        # 关键词总结
-                        print(f'总结关键词...', end="")
-                        keywordpath = os.path.join(basicpath, model, 'keywords')
-                        if not os.path.exists(keywordpath):
-                            os.makedirs(keywordpath)
-                        if not os.path.exists(os.path.join(keywordpath, f'{dir}.txt')):
-                            report_keywords = extract_keywords(report_dict, report_type)
-                            with open(os.path.join(keywordpath, f'{dir}.txt'), 'w', encoding='utf-8') as f:
-                                f.write('\n'.join(report_keywords))
-                        else:
-                            print('文件已存在，跳过分析...', end="")
-                        print('ok')
+                        # # 关键词总结
+                        # print(f'总结关键词...', end="")
+                        # keywordpath = os.path.join(basicpath, model, 'keywords')
+                        # if not os.path.exists(keywordpath):
+                        #     os.makedirs(keywordpath)
+                        # if not os.path.exists(os.path.join(keywordpath, f'{dir}.txt')):
+                        #     report_keywords = extract_keywords(report_dict, report_type)
+                        #     with open(os.path.join(keywordpath, f'{dir}.txt'), 'w', encoding='utf-8') as f:
+                        #         f.write('\n'.join(report_keywords))
+                        # else:
+                        #     print('文件已存在，跳过分析...', end="")
+                        # print('ok')
 
                         # 对每个代码文件进行分析
                         filepath = os.path.join(loadpath, dir)
-                        savepath = os.path.join(basicpath, model, 'relevance')
+                        savepath = os.path.join(basicpath, LLM_models[model], 'relevance')
                         if not os.path.exists(savepath):
                             os.makedirs(savepath)
 
