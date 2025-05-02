@@ -346,10 +346,7 @@ def analyze_chunks(report, type, chunks):
             代码块内容:{chunk['code']}
             """,
         }
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user}
-        ]
+        messages = [system, user]
         queries.append(messages)
 
     prompts = [
