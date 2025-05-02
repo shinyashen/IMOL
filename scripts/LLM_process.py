@@ -341,6 +341,36 @@ llm = LLM(model=model_name, max_model_len=7168, tensor_parallel_size=auto_tensor
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 
+# 定义截断函数
+def truncate_messages(messages, max_tokens, tokenizer):
+    """
+    动态截断消息内容，优先保留前段消息
+    策略：正向遍历（从旧到新），超出限制时截断后部内容
+    """
+    total_tokens = 0
+    truncated_messages = []
+
+    # 正向遍历消息（从旧到新）
+    for msg in messages:
+        content = msg.get("content", "")
+        tokens = tokenizer.encode(content, add_special_tokens=False)
+
+        # 如果当前消息加入后超出限制
+        if total_tokens + len(tokens) > max_tokens:
+            remaining_space = max_tokens - total_tokens
+            if remaining_space > 0:
+                # 截断当前消息的前部内容（保留开头）
+                truncated_tokens = tokens[:remaining_space]
+                msg["content"] = tokenizer.decode(truncated_tokens)
+                truncated_messages.append(msg)
+            break  # 停止处理后续消息
+        else:
+            truncated_messages.append(msg)
+            total_tokens += len(tokens)
+
+    return truncated_messages  # 直接返回旧到新顺序
+
+
 # 批量处理代码块
 def analyze_chunks(report, type, chunks):
     queries = []
@@ -370,7 +400,7 @@ def analyze_chunks(report, type, chunks):
             """,
         }
         messages = [system, user]
-        queries.append(messages)
+        queries.append(truncate_messages(messages, 7130, tokenizer))
 
     if get_model() == 'Qwen3-8B':
         with open(os.path.join(get_model_path(), 'qwen3_nonthinking.jinja'), 'r', encoding='utf-8') as f:
