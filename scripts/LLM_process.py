@@ -279,6 +279,34 @@ def get_system_knowledge(report_type: str) -> str:
     return knowledge_map.get(report_type, "通用代码缺陷分析")
 
 
+def get_system_knowledge_en(report_type: str) -> str:
+    """根据报告类型返回对应的系统知识(English version)"""
+    knowledge_map = {
+        "PE": """
+        # Analysis Focus for Programming Entities
+        You're analyzing defect reports containing programming entities. Special attention required to:
+        1. Identify specific class/method/variable names in code blocks
+        2. Validate parameter passing and object initialization
+        3. Verify access modifiers (private/public) appropriateness
+        """,
+        "ST": """
+        # Analysis Focus for Stack Traces
+        You're analyzing defect reports containing stack traces. Special attention required to:
+        1. Determine if code blocks match files in stack trace
+        2. Analyze exception propagation path (from low-level methods to entry points)
+        3. Inspect contextual variable states at exception occurrence
+        """,
+        "NL": """
+        # Analysis Focus for Natural Language Descriptions
+        You're analyzing defect reports with natural language descriptions. Special attention required to:
+        1. Infer potential defect locations through semantic analysis
+        2. Identify common error patterns (null pointers, out-of-bounds, etc.)
+        3. Prioritize code logic/function calls mentioned in defect context
+        """
+    }
+    return knowledge_map.get(report_type, "General code defect analysis")
+
+
 # 异步处理代码块
 async def async_analyze_chunks(report, type, chunks):
     queries = []
@@ -438,7 +466,7 @@ def analyze_chunks(report, type, chunks):
             "role": "system",
             "content": f"""
                 # Task Description
-                {get_system_knowledge(type)}
+                {get_system_knowledge_en(type)}
 
                 # Rules (MUST BE STRICTLY FOLLOWED)
                 You are a binary classifier determining code relevance to defect reports. Requirements:
