@@ -1,4 +1,4 @@
-import argparse
+import os, argparse
 
 
 parser = argparse.ArgumentParser(description='LLM process', formatter_class=argparse.RawTextHelpFormatter)
@@ -9,7 +9,7 @@ args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
 
-import os, html, asyncio, json, re, chardet
+import html, asyncio, json, re, chardet
 import tree_sitter_java as tsjava
 import xml.etree.ElementTree as ET
 import pandas as pd
