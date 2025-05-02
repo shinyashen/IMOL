@@ -528,11 +528,11 @@ def analyze_chunks(report, type, chunks):
     # 执行批量推理
     sampling_params = SamplingParams(temperature=0.7, max_tokens=20480)
     results = llm.generate(prompts, sampling_params)
-    results = [res.rsplit('</think>\n\n', 1)[-1] if len(res.rsplit('</think>\n\n', 1)) > 1 else res for res in results]
-    # print([result.outputs[0].text for result in results])
+    outputs = [res.outputs[0].text.rsplit('</think>\n\n', 1)[-1] if len(res.outputs[0].text.rsplit('</think>\n\n', 1)) > 1 else res.outputs[0].text for res in results]
+    # print(outputs)
 
     global is_relevant  # 使用全局变量存储分析结果
-    is_relevant = 1 if 1 in [extract_last_zero_or_one(result.outputs[0].text) for result in results] else 0
+    is_relevant = 1 if 1 in [extract_last_zero_or_one(out) for out in outputs] else 0
 
 
 if __name__ == '__main__':
