@@ -350,6 +350,10 @@ def analyze_chunks(report, type, chunks):
         messages = [system, user]
         queries.append(messages)
 
+    if get_model() == 'Qwen3-8B':
+        with open(os.path.join(get_model_path(), 'qwen3_nonthinking.jinja'), 'r', encoding='utf-8') as f:
+            tokenizer.chat_template = f.read()
+
     prompts = [
         tokenizer.apply_chat_template(
             messages,
@@ -360,7 +364,7 @@ def analyze_chunks(report, type, chunks):
     ]
 
     # 执行批量推理
-    sampling_params = SamplingParams(temperature=0.7, max_tokens=20480, extra_args={"enable_thinking": False})
+    sampling_params = SamplingParams(temperature=0.7, max_tokens=20480)
     results = llm.generate(prompts, sampling_params)
     # print([result.outputs[0].text for result in results])
 
