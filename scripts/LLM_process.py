@@ -345,7 +345,7 @@ if __name__ == '__main__':
 
                         # 对每个代码文件进行分析
                         filepath = os.path.join(loadpath, dir)
-                        savepath = os.path.join(basicpath, LLM_models[model], 'relevance')
+                        savepath = os.path.join(basicpath, get_model(), 'relevance')
                         if not os.path.exists(savepath):
                             os.makedirs(savepath)
 
