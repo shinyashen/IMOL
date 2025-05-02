@@ -386,6 +386,12 @@ def truncate_messages(messages, max_tokens, tokenizer):
     return truncated_messages  # 直接返回旧到新顺序
 
 
+def extract_last_zero_or_one(text: str) -> int:
+    # 反向查找最后一个 0 或 1
+    match = re.search(r'(?s)(.*)([01])(?!.*[01])', text.strip())
+    return int(match.group(2)) if match else 0
+
+
 # 批量处理代码块
 def analyze_chunks(report, type, chunks):
     queries = []
@@ -450,7 +456,7 @@ def analyze_chunks(report, type, chunks):
     # print([result.outputs[0].text for result in results])
 
     global is_relevant  # 使用全局变量存储分析结果
-    is_relevant = 1 if '1' in [result.outputs[0].text for result in results] else 0
+    is_relevant = 1 if 1 in [extract_last_zero_or_one(result.outputs[0].text) for result in results] else 0
 
 
 if __name__ == '__main__':
