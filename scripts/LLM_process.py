@@ -315,7 +315,7 @@ async def async_analyze_chunks(report, type, chunks):
 
 # 初始化tokenizer
 model_name = get_model_path()
-llm = LLM(model=model_name)
+llm = LLM(model=model_name, max_model_len=7168)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu  # 使用物理1号和2号GPU（系统看到的0号和1号）
 
@@ -360,7 +360,7 @@ def analyze_chunks(report, type, chunks):
     ]
 
     # 执行批量推理
-    sampling_params = SamplingParams(temperature=0.7, max_tokens=20480, extra_args={"chat_template_kwargs": {"enable_thinking": False}})
+    sampling_params = SamplingParams(temperature=0.7, max_tokens=20480, extra_args={"enable_thinking": False})
     results = llm.generate(prompts, sampling_params)
     # print([result.outputs[0].text for result in results])
 
