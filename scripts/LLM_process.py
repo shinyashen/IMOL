@@ -1,4 +1,15 @@
-import os, html, asyncio, json, re, argparse, chardet
+import argparse
+
+
+parser = argparse.ArgumentParser(description='LLM process', formatter_class=argparse.RawTextHelpFormatter)
+parser.add_argument('model', type=str, help="use which LLM model")
+parser.add_argument('gpu', type=str, help="use gpu ids")
+parser.add_argument('-u', '--url', type=str, help="copied photo's filename, extension name(e.g. .jpg/.png) not included")
+args = parser.parse_args()
+os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+
+
+import os, html, asyncio, json, re, chardet
 import tree_sitter_java as tsjava
 import xml.etree.ElementTree as ET
 import pandas as pd
@@ -22,11 +33,7 @@ projects = {
 versions = {}
 report_types = ['PE', 'ST', 'NL']
 
-parser = argparse.ArgumentParser(description='LLM process', formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument('model', type=str, help="use which LLM model")
-parser.add_argument('gpu', type=str, help="use gpu ids")
-parser.add_argument('-u', '--url', type=str, help="copied photo's filename, extension name(e.g. .jpg/.png) not included")
-args = parser.parse_args()
+
 
 JAVA_LANGUAGE = Language(tsjava.language())
 parser = Parser(JAVA_LANGUAGE)
@@ -313,11 +320,26 @@ async def async_analyze_chunks(report, type, chunks):
 
 # vllm 处理函数
 
+def auto_tensor_parallel():
+    """根据 CUDA_VISIBLE_DEVICES 自动计算并行度"""
+    # 获取环境变量值
+    visible_devices = os.getenv("CUDA_VISIBLE_DEVICES", "")
+
+    # 分割数字（支持逗号、空格分隔）
+    devices = [d.strip() for d in visible_devices.replace(' ', ',').split(',') if d.strip()]
+    # 过滤有效数字
+    valid_devices = [d for d in devices if d.isdigit()]
+    num_gpus = len(valid_devices)
+    # print(num_gpus)
+
+    return num_gpus if num_gpus >= 1 else 1  # 至少返回1
+
+
 # 初始化tokenizer
 model_name = get_model_path()
-llm = LLM(model=model_name, max_model_len=7168)
+llm = LLM(model=model_name, max_model_len=7168, tensor_parallel_size=auto_tensor_parallel())
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu  # 使用物理1号和2号GPU（系统看到的0号和1号）
+
 
 # 批量处理代码块
 def analyze_chunks(report, type, chunks):
