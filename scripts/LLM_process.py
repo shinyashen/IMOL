@@ -501,7 +501,7 @@ def analyze_chunks(report, type, chunks):
                 {chunk['code']}
 
                 ## Instruction
-                Based on the above information, determine if the code block is relevant to the defect report. 
+                Based on the above information, determine if the code block is relevant to the defect report.
                 Return ONLY 0 or 1 following the rules strictly.
             """
         }
@@ -528,6 +528,7 @@ def analyze_chunks(report, type, chunks):
     # 执行批量推理
     sampling_params = SamplingParams(temperature=0.7, max_tokens=20480)
     results = llm.generate(prompts, sampling_params)
+    results = [res.rsplit('</think>\n\n', 1)[-1] if len(res.rsplit('</think>\n\n', 1)) > 1 else res for res in results]
     # print([result.outputs[0].text for result in results])
 
     global is_relevant  # 使用全局变量存储分析结果
