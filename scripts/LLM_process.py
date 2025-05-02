@@ -324,7 +324,6 @@ if __name__ == '__main__':
                         print(f'Processing {group}/{project}/{version}/{dir}...')
                         # 缺陷报告处理
                         print(f'处理缺陷报告...', end="")
-                        model = 'Qwen/Qwen3-8B'
                         reportpath = os.path.join(Bench4BL_datapath, group, project, 'bugrepo', 'bugs', f'{project}-{dir}.xml')
                         with open(reportpath, 'r', encoding='utf-8') as f:
                             xml_content = f.read()
