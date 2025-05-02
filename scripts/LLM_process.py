@@ -44,14 +44,27 @@ def get_base_url():
     return conf.read_config([conf.LLM_section], "base_url", None)
 
 
+def get_model():
+    if args.model not in LLM_models:
+        print(f"Error: {args.model} is not a valid model name.")
+        exit(1)
+    return args.model
+
+
+def get_model_path():
+    return os.path.join(conf.read_config([conf.LLM_section], "model_path", None), get_model())
+
+
 LLM_models = ['Meta-Llama-3-8B-Instruct', 'DeepSeek-R1-Distill-Llama-8B', 'Qwen3-8B']
-model_path = conf.read_config([conf.LLM_section], "model_path", None)
+model = get_model()
+model_path = get_model_path()
+base_url = get_base_url()
 client = OpenAI(
-    base_url=get_base_url(),
+    base_url=base_url,
     api_key=conf.read_config([conf.LLM_section], "api_key", None)
 )
 aclient = AsyncOpenAI(
-    base_url=get_base_url(),
+    base_url=base_url,
     api_key=conf.read_config([conf.LLM_section], "api_key", None)
 )
 is_relevant = 0
@@ -139,10 +152,17 @@ async def async_query_openai(sem: Semaphore, query_dict, prev_msg=None):
         if prev_msg is None:
             msg_list.append(query_dict['system'])
         msg_list.append(query_dict['user'])
-        completion = await aclient.chat.completions.create(
-            model=query_dict['model'],
-            messages=msg_list
-        )
+        if get_model() not in ['Qwen3-8B']:
+            completion = await aclient.chat.completions.create(
+                model=query_dict['model'],
+                messages=msg_list
+            )
+        else:
+            completion = await aclient.chat.completions.create(
+                model=query_dict['model'],
+                messages=msg_list,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+            )
         return completion.choices[0].message.content
 
 
@@ -248,17 +268,6 @@ def get_system_knowledge(report_type: str) -> str:
     return knowledge_map.get(report_type, "通用代码缺陷分析")
 
 
-def get_model():
-    if args.model not in LLM_models:
-        print(f"Error: {args.model} is not a valid model name.")
-        exit(1)
-    return args.model
-
-
-def get_model_path():
-    return os.path.join(model_path, get_model())
-
-
 # 异步处理代码块
 async def analyze_chunks(report, type, chunks):
     queries = []
@@ -288,7 +297,7 @@ async def analyze_chunks(report, type, chunks):
             """,
         }
         dict = {
-            'model': get_model_path(),
+            'model': model_path,
             'system': system,
             'user': user
         }
@@ -349,7 +358,7 @@ if __name__ == '__main__':
 
                         # 对每个代码文件进行分析
                         filepath = os.path.join(loadpath, dir)
-                        savepath = os.path.join(basicpath, get_model(), 'relevance')
+                        savepath = os.path.join(basicpath, model, 'relevance')
                         if not os.path.exists(savepath):
                             os.makedirs(savepath)
 
