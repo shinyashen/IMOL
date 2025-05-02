@@ -102,7 +102,8 @@ data_options = {
 LLM_section = "LLM"
 LLM_options = {
     "api_key": "your_api_key",
-    "base_url": "your_base_url",
+    "base_url": "http://localhost:8080/v1",
+    "model_path": "/path/to/your/models"
 }
 
 # all config zip to dict

@@ -1,7 +1,4 @@
-import os
-import codecs
-import re
-import subprocess
+import os, codecs, re, subprocess
 import pandas as pd
 from datetime import datetime
 

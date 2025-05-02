@@ -1,5 +1,4 @@
-import os
-import bm25s
+import os, bm25s
 import pandas as pd
 
 import config as conf

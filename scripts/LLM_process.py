@@ -1,7 +1,4 @@
-import os
-import html
-import asyncio
-import json
+import os, html, asyncio, json, re, argparse, chardet
 import tree_sitter_java as tsjava
 import xml.etree.ElementTree as ET
 import pandas as pd
@@ -23,6 +20,11 @@ projects = {
 versions = {}
 report_types = ['PE', 'ST', 'NL']
 
+parser = argparse.ArgumentParser(description='LLM process', formatter_class=argparse.RawTextHelpFormatter)
+parser.add_argument('model', type=str, help="use which LLM model")
+parser.add_argument('-u', '--url', type=str, help="copied photo's filename, extension name(e.g. .jpg/.png) not included")
+args = parser.parse_args()
+
 JAVA_LANGUAGE = Language(tsjava.language())
 parser = Parser(JAVA_LANGUAGE)
 parse_type = {
@@ -35,17 +37,21 @@ parse_type = {
 }
 unimportant_type = ['line_comment', 'block_comment']
 
-LLM_models = {
-    'meta-llama/Meta-Llama-3-8B-Instruct': 'Meta-Llama-3-8B-Instruct',
-    'deepseek-ai/DeepSeek-R1-Distill-Llama-8B': 'DeepSeek-R1-Distill-Llama-8B',
-    'Qwen/Qwen3-8B': 'Qwen3-8B'
-}
+
+def get_base_url():
+    if args.url is not None:
+        return args.url
+    return conf.read_config([conf.LLM_section], "base_url", None)
+
+
+LLM_models = ['Meta-Llama-3-8B-Instruct', 'DeepSeek-R1-Distill-Llama-8B', 'Qwen3-8B']
+model_path = conf.read_config([conf.LLM_section], "model_path", None)
 client = OpenAI(
-    base_url=conf.read_config([conf.LLM_section], "base_url", None),
+    base_url=get_base_url(),
     api_key=conf.read_config([conf.LLM_section], "api_key", None)
 )
 aclient = AsyncOpenAI(
-    base_url=conf.read_config([conf.LLM_section], "base_url", None),
+    base_url=get_base_url(),
     api_key=conf.read_config([conf.LLM_section], "api_key", None)
 )
 is_relevant = 0
@@ -176,6 +182,12 @@ def classify_bug_report(bug_report: dict):
     return 'NL'  # LLM返回结果无法处理
 
 
+def clean_escape_chars_safe(s: str) -> str:
+    # 仅替换 \: ，保留其他转义（如 \\、\/"）
+    s = re.sub(r'(?<!\\)\\:', ':', s)   # 非 \\: 的情况
+    return s
+
+
 def extract_keywords(bug_report: dict, report_type: str) -> List[str]:
     """根据报告类型提取关键词"""
     type_prompt = {
@@ -200,7 +212,7 @@ def extract_keywords(bug_report: dict, report_type: str) -> List[str]:
         "content": f"缺陷报告内容:\n标题:{bug_report['title']}\n内容总结:{bug_report['summary']}\n报告描述:{bug_report['description']}"
     }
     dict = {
-        'model': 'Qwen/Qwen3-8B',
+        'model': 'qwen-max-latest',
         'system': system,
         'user': user
     }
@@ -208,7 +220,7 @@ def extract_keywords(bug_report: dict, report_type: str) -> List[str]:
     content = query_openai(dict)
     if "```json" in content:  # 清理JSON响应
         content = content.split("```json")[1].split("```")[0]
-    return [str(item) for item in json.loads(content.strip()).get("keywords", [])]
+    return [str(item) for item in json.loads(clean_escape_chars_safe(content.strip())).get("keywords", [])]
 
 
 def get_system_knowledge(report_type: str) -> str:
@@ -234,6 +246,13 @@ def get_system_knowledge(report_type: str) -> str:
         """
     }
     return knowledge_map.get(report_type, "通用代码缺陷分析")
+
+
+def get_model():
+    if args.model not in LLM_models:
+        print(f"Error: {args.model} is not a valid model name.")
+        exit(1)
+    return os.path.join(model_path, args.model)
 
 
 # 异步处理代码块
@@ -265,7 +284,7 @@ async def analyze_chunks(report, type, chunks):
             """,
         }
         dict = {
-            'model': 'qwen-max-latest',
+            'model': get_model(),
             'system': system,
             'user': user
         }
@@ -313,7 +332,7 @@ if __name__ == '__main__':
 
                         # # 关键词总结
                         # print(f'总结关键词...', end="")
-                        # keywordpath = os.path.join(basicpath, model, 'keywords')
+                        # keywordpath = os.path.join(basicpath, 'qwen-max-latest', 'keywords')
                         # if not os.path.exists(keywordpath):
                         #     os.makedirs(keywordpath)
                         # if not os.path.exists(os.path.join(keywordpath, f'{dir}.txt')):
@@ -334,7 +353,9 @@ if __name__ == '__main__':
                             result_list = []
                             for file in os.listdir(filepath):
                                 print(f"处理文件{file}...", end="")
-                                with open(os.path.join(filepath, file), 'r', encoding='utf-8') as f:
+                                with open(os.path.join(filepath, file), 'rb') as f:  # 判断可能的文件编码类型
+                                    detected_encoding = chardet.detect(f.read())['encoding']
+                                with open(os.path.join(filepath, file), 'r', encoding=detected_encoding) as f:
                                     code = f.read()
 
                                 # 分割代码

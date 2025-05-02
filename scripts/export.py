@@ -1,5 +1,4 @@
-import os
-import shutil
+import os, shutil
 
 import config as conf
 

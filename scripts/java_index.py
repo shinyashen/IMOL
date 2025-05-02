@@ -1,6 +1,4 @@
-import os
-import shutil
-import re
+import os, shutil, re
 from typing import List, Dict, Optional
 
 import config as conf

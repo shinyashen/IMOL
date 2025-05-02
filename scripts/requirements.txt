@@ -1,5 +1,7 @@
+pandas
 tree_sitter
 tree_sitter_java
 openai
 BeautifulSoup4
 bm25s
+chardet
