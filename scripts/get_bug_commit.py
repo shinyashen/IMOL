@@ -91,8 +91,37 @@ def load_logs(_group, _project):
             _timestamp = int(datetime.strptime(_dict['commit_date'].strip(), r'%Y-%m-%d %H:%M:%S').timestamp())
             my_logs.append([_id, _hash, _timestamp])
 
+        duppath = os.path.join(Bench4BL_datapath, _group, _project, 'bugrepo', 'duplicates.json')
+        f = open(duppath, 'r', encoding='utf-8')
+        text = f.read()
+        f.close()
+        dup = eval(text)
+        dup_dict = {}
+        for key1, value1 in dup.items():
+            key2 = key1.upper()
+            value2 = {sub[1]: sub[0] for sub in value1}
+            dup_dict[key2] = value2
+
         df = pd.DataFrame(my_logs)
-        df.to_csv(savepath, index=False, header=False)
+        res_logs = pd.DataFrame()
+        basepath = os.path.join(datapath, _group, _project)
+        for version in os.listdir(basepath):
+            idpath = os.path.join(basepath, version, 'recommended_IRBL', 'combined_files')
+            for id in os.listdir(idpath):
+                # 提取id列
+                column = df.iloc[:, 0]
+
+                # 检查值是否存在
+                if id not in column.values:
+                    dup_index = str(dup_dict[_project][int(id)])
+                    dup_row = df[df.iloc[:, 0] == dup_index].copy()
+                    dup_row[df.columns[0]] = id
+                    res_logs = pd.concat([res_logs, dup_row])
+                else:
+                    res_logs = pd.concat([res_logs, df[df.iloc[:, 0] == id]])
+
+        res_logs = res_logs.sort_values(by=[df.columns[2], df.columns[0]], ascending=False)
+        res_logs.to_csv(savepath, index=False, header=False)
 
 
 # 获取最新的提交SHA
