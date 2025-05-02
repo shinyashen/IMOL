@@ -252,7 +252,11 @@ def get_model():
     if args.model not in LLM_models:
         print(f"Error: {args.model} is not a valid model name.")
         exit(1)
-    return os.path.join(model_path, args.model)
+    return args.model
+
+
+def get_model_path():
+    return os.path.join(model_path, get_model())
 
 
 # 异步处理代码块
@@ -284,7 +288,7 @@ async def analyze_chunks(report, type, chunks):
             """,
         }
         dict = {
-            'model': get_model(),
+            'model': get_model_path(),
             'system': system,
             'user': user
         }
