@@ -4,6 +4,7 @@ import os, argparse
 parser = argparse.ArgumentParser(description='LLM process', formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('model', type=str, help="use which LLM model")
 parser.add_argument('gpu', type=str, help="use gpu ids")
+parser.add_argument('-u', '--url', type=str, help="LLM api url")
 parser.add_argument('-f', '--force', action='store_true', help="force to analyze the file even if it exists")
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
