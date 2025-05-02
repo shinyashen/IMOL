@@ -7,6 +7,8 @@ from openai import OpenAI, AsyncOpenAI
 from bs4 import BeautifulSoup
 from typing import List
 from asyncio import Semaphore
+from vllm import LLM, SamplingParams
+from transformers import AutoTokenizer
 
 import config as conf
 
@@ -22,6 +24,7 @@ report_types = ['PE', 'ST', 'NL']
 
 parser = argparse.ArgumentParser(description='LLM process', formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('model', type=str, help="use which LLM model")
+parser.add_argument('gpu', type=str, help="use gpu ids")
 parser.add_argument('-u', '--url', type=str, help="copied photo's filename, extension name(e.g. .jpg/.png) not included")
 args = parser.parse_args()
 
@@ -269,7 +272,7 @@ def get_system_knowledge(report_type: str) -> str:
 
 
 # 异步处理代码块
-async def analyze_chunks(report, type, chunks):
+async def async_analyze_chunks(report, type, chunks):
     queries = []
     for chunk in chunks:
         system = {
@@ -306,6 +309,66 @@ async def analyze_chunks(report, type, chunks):
     results = await async_process_queries(queries)
     global is_relevant  # 使用全局变量存储分析结果
     is_relevant = 1 if '1' in results else 0
+
+
+# vllm 处理函数
+
+# 初始化tokenizer
+model_name = get_model_path()
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu  # 使用物理1号和2号GPU（系统看到的0号和1号）
+
+# 批量处理代码块
+def analyze_chunks(report, type, chunks):
+    queries = []
+    for chunk in chunks:
+        system = {
+            "role": "system",
+            "content": f"""
+                {get_system_knowledge(type)}
+
+                通用规则：
+                1. 输出只有 0 或 1 数字，0 表示代码块与报告无关，1 表示代码块与报告相关。
+                2. 只需返回 0 或 1 数字，不要解释。
+                """
+        }
+        user = {
+            "role": "user",
+            "content": f"""
+            [缺陷报告]
+            标题:{report['title']}
+            内容总结:{report['summary']}
+            报告描述:{report['description']}
+
+            [待分析代码块]
+            文件名:{chunk['filename']}
+            代码块所在类名:{chunk['class']}
+            代码块内容:{chunk['code']}
+            """,
+        }
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ]
+        queries.append(messages)
+
+    prompts = [
+        tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,  # 不进行tokenize
+            add_generation_prompt=True
+        )
+        for messages in queries
+    ]
+
+    # 执行推理（后续步骤同上）
+    llm = LLM(model=model_name)
+    sampling_params = SamplingParams(temperature=0.7, max_tokens=20480, extra_args={"chat_template_kwargs": {"enable_thinking": False}})
+    results = llm.generate(prompts, sampling_params)
+    # print([result.outputs[0].text for result in results])
+
+    global is_relevant  # 使用全局变量存储分析结果
+    is_relevant = 1 if '1' in [result.outputs[0].text for result in results] else 0
 
 
 if __name__ == '__main__':
@@ -384,7 +447,7 @@ if __name__ == '__main__':
 
                                 # 异步执行
                                 print(f"LLM分析相关度...", end="")
-                                asyncio.run(analyze_chunks(report_dict, report_type, chunks))
+                                asyncio.run(async_analyze_chunks(report_dict, report_type, chunks))
                                 result_list.append([file, is_relevant])
                                 print(f"ok: {'不' if is_relevant == 0 else ''}相关")
 

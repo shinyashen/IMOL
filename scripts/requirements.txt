@@ -1,7 +1,8 @@
 pandas
 tree_sitter
 tree_sitter_java
-openai
+vllm
+transformers
 BeautifulSoup4
 bm25s
 chardet
