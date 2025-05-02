@@ -4,7 +4,7 @@ import os, argparse
 parser = argparse.ArgumentParser(description='LLM process', formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument('model', type=str, help="use which LLM model")
 parser.add_argument('gpu', type=str, help="use gpu ids")
-parser.add_argument('-u', '--url', type=str, help="copied photo's filename, extension name(e.g. .jpg/.png) not included")
+parser.add_argument('-f', '--force', action='store_true', help="force to analyze the file even if it exists")
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
@@ -285,25 +285,39 @@ async def async_analyze_chunks(report, type, chunks):
         system = {
             "role": "system",
             "content": f"""
+                # 任务说明
                 {get_system_knowledge(type)}
 
-                通用规则：
-                1. 输出只有 0 或 1 数字，0 表示代码块与报告无关，1 表示代码块与报告相关。
-                2. 只需返回 0 或 1 数字，不要解释。
+                # 规则（必须严格遵循）
+                你是一个二分类器，判断代码块是否与缺陷报告相关。规则：
+                1. 输出只能是**单个数字** 0 或 1：
+                - 0 = 不相关
+                - 1 = 相关
+                2. **禁止**任何解释、标点、空格或额外文本。
+
+                # 输出示例
+                用户输入：缺陷报告 + 代码块
+                你应返回：0
+                或
+                你应返回：1
                 """
         }
         user = {
             "role": "user",
             "content": f"""
-            [缺陷报告]
-            标题:{report['title']}
-            内容总结:{report['summary']}
-            报告描述:{report['description']}
+            ## 缺陷报告
+            [标题] {report['title']}
+            [内容总结] {report['summary']}
+            [报告描述] {report['description']}
 
-            [待分析代码块]
-            文件名:{chunk['filename']}
-            代码块所在类名:{chunk['class']}
-            代码块内容:{chunk['code']}
+            ## 待分析代码块
+            [文件名] {chunk['filename']}
+            [类名] {chunk['class']}
+            [代码块内容]
+            {chunk['code']}
+
+            ## 指令
+            请根据上述信息，判断代码块是否与缺陷报告相关，严格按规则返回 0 或 1。
             """,
         }
         dict = {
@@ -378,25 +392,39 @@ def analyze_chunks(report, type, chunks):
         system = {
             "role": "system",
             "content": f"""
+                # 任务说明
                 {get_system_knowledge(type)}
 
-                通用规则：
-                1. 输出只有 0 或 1 数字，0 表示代码块与报告无关，1 表示代码块与报告相关。
-                2. 只需返回 0 或 1 数字，不要解释。
+                # 规则（必须严格遵循）
+                你是一个二分类器，判断代码块是否与缺陷报告相关。规则：
+                1. 输出只能是**单个数字** 0 或 1：
+                - 0 = 不相关
+                - 1 = 相关
+                2. **禁止**任何解释、标点、空格或额外文本。
+
+                # 输出示例
+                用户输入：缺陷报告 + 代码块
+                你应返回：0
+                或
+                你应返回：1
                 """
         }
         user = {
             "role": "user",
             "content": f"""
-            [缺陷报告]
-            标题:{report['title']}
-            内容总结:{report['summary']}
-            报告描述:{report['description']}
+            ## 缺陷报告
+            [标题] {report['title']}
+            [内容总结] {report['summary']}
+            [报告描述] {report['description']}
 
-            [待分析代码块]
-            文件名:{chunk['filename']}
-            代码块所在类名:{chunk['class']}
-            代码块内容:{chunk['code']}
+            ## 待分析代码块
+            [文件名] {chunk['filename']}
+            [类名] {chunk['class']}
+            [代码块内容]
+            {chunk['code']}
+
+            ## 指令
+            请根据上述信息，判断代码块是否与缺陷报告相关，严格按规则返回 0 或 1。
             """,
         }
         messages = [system, user]
@@ -477,7 +505,7 @@ if __name__ == '__main__':
                         if not os.path.exists(savepath):
                             os.makedirs(savepath)
 
-                        if not os.path.exists(os.path.join(savepath, f"{dir}.txt")):
+                        if (not os.path.exists(os.path.join(savepath, f"{dir}.txt"))) or args.force:
                             result_list = []
                             for file in os.listdir(filepath):
                                 print(f"处理文件{file}...", end="")
