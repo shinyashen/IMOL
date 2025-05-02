@@ -361,7 +361,7 @@ def analyze_chunks(report, type, chunks):
         for messages in queries
     ]
 
-    # 执行推理（后续步骤同上）
+    # 执行批量推理
     llm = LLM(model=model_name)
     sampling_params = SamplingParams(temperature=0.7, max_tokens=20480, extra_args={"chat_template_kwargs": {"enable_thinking": False}})
     results = llm.generate(prompts, sampling_params)
@@ -447,7 +447,7 @@ if __name__ == '__main__':
 
                                 # 异步执行
                                 print(f"LLM分析相关度...", end="")
-                                asyncio.run(async_analyze_chunks(report_dict, report_type, chunks))
+                                analyze_chunks(report_dict, report_type, chunks)
                                 result_list.append([file, is_relevant])
                                 print(f"ok: {'不' if is_relevant == 0 else ''}相关")
 
