@@ -414,28 +414,75 @@ def analyze_chunks(report, type, chunks):
                 你应返回：0
                 或
                 你应返回：1
-                """
+            """
         }
         user = {
             "role": "user",
             "content": f"""
-            ## 缺陷报告
-            [标题] {report['title']}
-            [内容总结] {report['summary']}
-            [报告描述] {report['description']}
+                ## 缺陷报告
+                [标题] {report['title']}
+                [内容总结] {report['summary']}
+                [报告描述] {report['description']}
 
-            ## 待分析代码块
-            [文件名] {chunk['filename']}
-            [类名] {chunk['class']}
-            [代码块内容]
-            {chunk['code']}
+                ## 待分析代码块
+                [文件名] {chunk['filename']}
+                [类名] {chunk['class']}
+                [代码块内容]
+                {chunk['code']}
 
-            ## 指令
-            请根据上述信息，判断代码块是否与缺陷报告相关，严格按规则返回 0 或 1。
-            """,
+                ## 指令
+                请根据上述信息，判断代码块是否与缺陷报告相关，严格按规则返回 0 或 1。
+            """
+        }
+        system_en = {
+            "role": "system",
+            "content": f"""
+                # Task Description
+                {get_system_knowledge(type)}
+
+                # Rules (MUST BE STRICTLY FOLLOWED)
+                You are a binary classifier determining code relevance to defect reports. Requirements:
+                1. Output MUST be a single digit 0 or 1:
+                - 0 = Irrelevant
+                - 1 = Relevant
+                2. STRICTLY PROHIBITED:
+                - Any explanations
+                - Punctuation
+                - Whitespace
+                - Extra text
+
+                # Output Examples
+                User input: Defect report + code block
+                You should return: 0
+                or
+                You should return: 1
+            """
+        }
+        user_en = {
+            "role": "user",
+            "content": f"""
+                ## Defect Report
+                [Title] {report['title']}
+                [Summary] {report['summary']}
+                [Description] {report['description']}
+
+                ## Code Block to Analyze
+                [Filename] {chunk['filename']}
+                [Class] {chunk['class']}
+                [Code Content]
+                {chunk['code']}
+
+                ## Instruction
+                Based on the above information, determine if the code block is relevant to the defect report. 
+                Return ONLY 0 or 1 following the rules strictly.
+            """
         }
         messages = [system, user]
-        queries.append(truncate_messages(messages, 7130, tokenizer))
+        messages_en = [system_en, user_en]
+        if get_model() == 'Meta-Llama-3-8B-Instruct':
+            queries.append(truncate_messages(messages_en, 7130, tokenizer))
+        else:
+            queries.append(truncate_messages(messages, 7130, tokenizer))
 
     if get_model() == 'Qwen3-8B':
         with open(os.path.join(get_model_path(), 'qwen3_nonthinking.jinja'), 'r', encoding='utf-8') as f:
