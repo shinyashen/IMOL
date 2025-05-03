@@ -144,18 +144,6 @@ def create_udb(_project):
             if not line:
                 continue
             current_commit = line.split(",")[1]  # 提取第二个字段为提交哈希
-
-            # 切换到父提交
-            parent_commit = f"{current_commit}~1"
-            subprocess.run(
-                ["git", "checkout", "-f", parent_commit],
-                cwd=repo_path,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-
-            # 生成UDB数据库文件
             savepath = os.path.join(datapath, 'gitrepo', _project, 'und')
             if not os.path.exists(savepath):
                 os.makedirs(savepath)
@@ -163,7 +151,18 @@ def create_udb(_project):
 
             print(f"Processing: {output_file}...",end='')
             if not os.path.exists(output_file):
-                subprocess.run([  # 执行UND分析命令
+                # 切换到父提交
+                parent_commit = f"{current_commit}~1"
+                subprocess.run(
+                    ["git", "checkout", "-f", parent_commit],
+                    cwd=repo_path,
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+
+                # 执行UND分析命令
+                subprocess.run([
                     "und", "-quiet",
                     "create", "-db", output_file, "-languages", "java",
                     "add", repo_path,
