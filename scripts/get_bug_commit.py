@@ -155,22 +155,23 @@ def create_udb(_project):
                 stderr=subprocess.DEVNULL
             )
 
-            # 生成UND数据库文件
+            # 生成UDB数据库文件
             savepath = os.path.join(datapath, 'gitrepo', _project, 'und')
             if not os.path.exists(savepath):
                 os.makedirs(savepath)
-            output_file = os.path.abspath(os.path.join(savepath, f"{current_commit}.und"))
-            print(f"Processing: {output_file}")
+            output_file = os.path.abspath(os.path.join(savepath, f"{current_commit}.udb"))
 
-            # 执行UND分析命令
-            subprocess.run([
-                "und", "create",
-                "-quiet",
-                "-db", output_file,
-                "-languages", "java",
-                "add", repo_path,
-                "analyze", "-all"
-            ], check=True, cwd=und_path)
+            print(f"Processing: {output_file}...",end='')
+            if not os.path.exists(output_file):
+                subprocess.run([  # 执行UND分析命令
+                    "und", "-quiet",
+                    "create", "-db", output_file, "-languages", "java",
+                    "add", repo_path,
+                    "analyze", "-all"
+                ], check=True, cwd=und_path)
+            else:
+                print("skip...",end='')
+            print('ok!')
 
     # 切换回最新提交
     subprocess.run(
