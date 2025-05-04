@@ -1,4 +1,4 @@
-import os, bm25s
+import os, bm25s, chardet
 import pandas as pd
 
 import config as conf
@@ -12,6 +12,7 @@ projects = {
     'Spring': ['ROO']
 }
 versions = {}
+methods = ['lucene', 'bm25l', 'bm25+']
 
 Bench4BL_path = conf.read_config([conf.Bench4BL_section], "path", None)
 Bench4BL_datapath = os.path.join(Bench4BL_path, 'data')
@@ -52,42 +53,47 @@ if __name__ == '__main__':
     for group in groups:
         for project in projects[group]:
             for version in versions[project]:
-                model = 'qwen-max-latest'
-                method = 'lucene'  # bm25l, bm25+
                 basicpath = os.path.join(datapath, group, project, version)
                 loadpath = os.path.join(basicpath, 'recommended_IRBL', 'combined_files')
                 if os.path.exists(loadpath):
                     for dir in os.listdir(loadpath):
-                        print(f'process: {project}/{version}/{dir}')
-                        filepath = os.path.join(loadpath, dir)
-                        file_list = []
-                        for file in os.listdir(filepath):
-                            with open(os.path.join(filepath, file), 'r', encoding='utf-8') as f:
-                                file_list.append(f.read())
+                        print(f'process: {project}/{version}/{dir}...')
+                        for method in methods:
+                            print(f'{method}...')
+                            savepath = os.path.join(basicpath, 'BM25', method)
+                            if not os.path.exists(os.path.join(savepath, f'{dir}.txt')):
+                                filepath = os.path.join(loadpath, dir)
+                                file_list = []
+                                for file in os.listdir(filepath):
+                                    with open(os.path.join(filepath, file), 'rb') as f:  # 判断可能的文件编码类型
+                                        detected_encoding = chardet.detect(f.read())['encoding']
+                                    with open(os.path.join(filepath, file), 'r', encoding=detected_encoding) as f:
+                                        file_list.append(f.read())
 
-                        keypath = os.path.join(basicpath, model, 'keywords', f'{dir}.txt')
-                        with open(keypath, 'r', encoding='utf-8') as f:
-                            keys = f.readlines()
-                        key_list = [line.strip() for line in keys]
+                                keypath = os.path.join(basicpath, 'qwen-max-latest', 'keywords', f'{dir}.txt')
+                                with open(keypath, 'r', encoding='utf-8') as f:
+                                    keys = f.readlines()
+                                key_list = [line.strip() for line in keys]
 
-                        # Tokenize the corpus and index it
-                        corpus_tokens = bm25s.tokenize(file_list)
-                        retriever = bm25s.BM25(method=method)
-                        retriever.index(corpus_tokens)
+                                # Tokenize the corpus and index it
+                                corpus_tokens = bm25s.tokenize(file_list)
+                                retriever = bm25s.BM25(method=method)
+                                retriever.index(corpus_tokens)
 
-                        # Search the corpus with a query
-                        query_tokens = bm25s.tokenize(' '.join(key_list))
-                        docs, scores = retriever.retrieve(query_tokens, k=len(file_list), corpus=range(len(file_list)))
+                                # Search the corpus with a query
+                                query_tokens = bm25s.tokenize(' '.join(key_list))
+                                docs, scores = retriever.retrieve(query_tokens, k=len(file_list), corpus=range(len(file_list)))
 
-                        docs_flat = docs.flatten().tolist()
-                        scores_flat = scores.flatten().tolist()
-                        normalized_scores = normalize_list_manual(scores_flat)
+                                docs_flat = docs.flatten().tolist()
+                                scores_flat = scores.flatten().tolist()
+                                normalized_scores = normalize_list_manual(scores_flat)
 
-                        result_list = []
-                        for i in range(len(docs_flat)):
-                            result_list.append([os.listdir(filepath)[docs_flat[i]], normalized_scores[i], scores_flat[i]])
-                        savepath = os.path.join(basicpath, model, 'BM25', method)
-                        if not os.path.exists(savepath):
-                            os.makedirs(savepath)
-                        df = pd.DataFrame(result_list)
-                        df.to_csv(os.path.join(savepath, f'{dir}.txt'), index=False, header=False)
+                                result_list = []
+                                for i in range(len(docs_flat)):
+                                    result_list.append([os.listdir(filepath)[docs_flat[i]], normalized_scores[i], scores_flat[i]])
+
+                                if not os.path.exists(savepath):
+                                    os.makedirs(savepath)
+                                df = pd.DataFrame(result_list)
+                                df.to_csv(os.path.join(savepath, f'{dir}.txt'), index=False, header=False)
+                        print('ok!')
