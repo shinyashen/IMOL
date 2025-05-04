@@ -6,6 +6,7 @@ parser.add_argument('model', type=str, help="use which LLM model")
 parser.add_argument('gpu', type=str, help="use gpu ids")
 parser.add_argument('-u', '--url', type=str, help="LLM api url")
 parser.add_argument('-f', '--force', action='store_true', help="force to analyze the file even if it exists")
+parser.add_argument('-p', '--project', type=str, help="specify one project to run")
 args = parser.parse_args()
 os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
@@ -543,6 +544,8 @@ if __name__ == '__main__':
     # 遍历所有项目和版本，加载相关源文件
     for group in groups:
         for project in projects[group]:
+            if args.project is not None and args.project != project:
+                continue
             for version in versions[project]:
                 basicpath = os.path.join(datapath, group, project, version)
                 loadpath = os.path.join(basicpath, 'recommended_IRBL', 'combined_files')
