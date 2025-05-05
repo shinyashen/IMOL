@@ -122,10 +122,13 @@ def calculate_metrics(ordered_list, target_list, _tech, _group, _project, _versi
 
 
 def cal_version_res(_tech, _group, _project, _version, _mode=None):
-    loadpart = ''  # TODO: LLM part
     if _tech in techs or _tech in proctechs:
-        loadpart = 'recommended_IRBL'
-    loadpath = os.path.join(datapath, _group, _project, _version, loadpart, _tech)
+        loadpart1 = 'recommended_IRBL'
+        loadpart2 = ''
+    if _tech in ['Qwen3-8B']:  # LLM result process
+        loadpart1 = ''
+        loadpart2 = 'result'
+    loadpath = os.path.join(datapath, _group, _project, _version, loadpart1, _tech, loadpart2)
     df_query = pd.DataFrame()
     query_num = 0
 
@@ -241,7 +244,7 @@ if __name__ == '__main__':
     df2.to_csv(os.path.join(datapath, f"{name1}.csv"), index=False)
 
     # 计算3种IRBL前200个数据，以及MAP和MRR组成的权值
-    name1 = 'IRBL_B200'
+    name2 = 'IRBL_B200'
     result1 = []
     MAPs1 = []
     MRRs1 = []
@@ -264,8 +267,8 @@ if __name__ == '__main__':
         df1 = pd.concat([df1, b], ignore_index=True)
     df2 = pd.DataFrame(result1)
     # 输出CSV
-    df1.to_csv(os.path.join(datapath, f"{name1}_raw.csv"), index=False)
-    df2.to_csv(os.path.join(datapath, f"{name1}.csv"), index=False)
+    df1.to_csv(os.path.join(datapath, f"{name2}_raw.csv"), index=False)
+    df2.to_csv(os.path.join(datapath, f"{name2}.csv"), index=False)
 
     df_MAP1 = pd.DataFrame(MAPs1)
     df_MRR1 = pd.DataFrame(MRRs1)
@@ -281,7 +284,7 @@ if __name__ == '__main__':
     df_weight.to_csv(os.path.join(datapath, 'IRBL_weight.txt'), index=False, header=False)
 
     # 计算加权IRBL的200报告以后数据
-    name2 = 'weighted_IRBL'
+    name3 = 'weighted_IRBL'
     result2 = []
     MAPs2 = []
     MRRs2 = []
@@ -297,5 +300,27 @@ if __name__ == '__main__':
     df4 = pd.DataFrame(result2)
 
     # 输出CSV
-    df3.to_csv(os.path.join(datapath, f"{name2}_raw.csv"), index=False)
-    df4.to_csv(os.path.join(datapath, f"{name2}.csv"), index=False)
+    df3.to_csv(os.path.join(datapath, f"{name3}_raw.csv"), index=False)
+    df4.to_csv(os.path.join(datapath, f"{name3}.csv"), index=False)
+
+    # 计算LLM处理后数据
+    name4 = 'Qwen3-8B'
+    result2 = []
+    MAPs2 = []
+    MRRs2 = []
+    df5 = pd.DataFrame()
+    for group in groups:
+        for project in projects[group]:
+            if project == 'HIVE':
+                continue
+            report_count = 0
+            a, b = cal_project_res('Qwen3-8B', group, project, 'P200')
+            result2.append(res_analysis('Qwen3-8B', a, b, False))
+    for a, b, c in cal_res(['Qwen3-8B'], 'P200'):
+        result2.append(res_analysis(a, b, c))
+        df5 = pd.concat([df5, b], ignore_index=True)
+    df6 = pd.DataFrame(result2)
+
+    # 输出CSV
+    df5.to_csv(os.path.join(datapath, f"{name4}_raw.csv"), index=False)
+    df6.to_csv(os.path.join(datapath, f"{name4}.csv"), index=False)

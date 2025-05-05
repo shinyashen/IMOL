@@ -168,3 +168,24 @@ if __name__ == '__main__':
                         if not os.path.exists(savepath):
                             os.makedirs(savepath)
                         result_df.to_csv(os.path.join(savepath, file), index=False, header=False)
+
+    # 计算LLM判断相关性后的文件列表
+    for group in groups:
+        for project in projects[group]:
+            for version in versions[project]:
+                basepath = os.path.join(datapath, group, project, version)
+                idpath = os.path.join(basepath, 'recommended_IRBL', 'weighted_IRBL')
+                if os.path.exists(idpath):
+                    for file in os.listdir(idpath):
+                        weighted_file = os.path.join(idpath, file)
+                        df1 = pd.read_csv(weighted_file, header=None)
+                        df1 = df1.rename(columns={df1.columns[0]: 'name', df1.columns[1]: 'score1'})
+                        LLM_rel_file = os.path.join(basepath, 'Qwen3-8B', 'relevance', file)
+                        df2 = pd.read_csv(LLM_rel_file, header=None)
+                        df2 = df2.rename(columns={df2.columns[0]: 'name', df2.columns[1]: 'rel'})
+                        merged_df = pd.merge(df1, df2, on='name').sort_values(by=["rel", "score1"], ascending=[False, False])
+
+                        savepath = os.path.join(basepath, 'Qwen3-8B', 'result')
+                        if not os.path.exists(savepath):
+                            os.makedirs(savepath)
+                        merged_df.to_csv(os.path.join(savepath, file), header=None, index=None)
