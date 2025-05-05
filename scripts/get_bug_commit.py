@@ -303,7 +303,7 @@ def search_java_file(name, search_dir):
 
     # 多结果时让用户选择
     if len(matched_files) > 1:
-        print(f"找到多个匹配项，请选择：(路径：{search_dir})")
+        print(f"找到多个匹配项，请选择文件：{name}")
         for idx, path in enumerate(matched_files, 1):
             print(f"[{idx}] {path}")
         while True:
