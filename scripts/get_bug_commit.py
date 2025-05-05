@@ -341,13 +341,20 @@ def export_truly_buggy_file_list():
                 for version in versions[project]:
                     loadpath = os.path.join(datapath, group, project, version, 'buglist')
                     if os.path.exists(loadpath):
+                        version_java_list = []
+                        for file in os.listdir(loadpath):  # 每个版本只进行一次全局查找
+                            with open(os.path.join(loadpath, file), 'r', encoding='utf-8') as f:
+                                file_list = f.readlines()
+                            version_java_list.extend([line.strip() for line in file_list])
+                        version_java_list = list(set(version_java_list))  # 去重
+                        index_dict = load_src_file(group, project, version, version_java_list)
+
                         for file in os.listdir(loadpath):
                             bug_id = os.path.splitext(file)[0]
                             print(f'Get: {group}/{project}/{version} Bug{bug_id}:')
                             with open(os.path.join(loadpath, file), 'r', encoding='utf-8') as f:
                                 file_list = f.readlines()
                             java_list = list(set([line.strip() for line in file_list]))  # 去重
-                            index_dict = load_src_file(group, project, version, java_list)
 
                             for java in java_list:
                                 if index_dict[java] is None:  # 二次全局查找
