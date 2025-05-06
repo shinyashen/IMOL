@@ -6,6 +6,7 @@ import config as conf
 
 
 techs = ['BugLocator', 'BRTracer', 'BLIA']
+BM25s = ['bm25+', 'bm25l', 'lucene']
 groups = ['Apache', 'Wildfly', 'Spring']
 projects = {
     'Apache': ['CAMEL', 'HBASE', 'HIVE'],
@@ -189,3 +190,43 @@ if __name__ == '__main__':
                         if not os.path.exists(savepath):
                             os.makedirs(savepath)
                         merged_df.to_csv(os.path.join(savepath, file), header=None, index=None)
+
+    # 计算BM25赋权后的合并文件列表
+    weights = {}
+    df_weights = pd.read_csv(os.path.join(datapath, 'BM25_weight.txt'), header=None, encoding='utf-8')
+    index = 0
+    for group in groups:
+        for project in projects[group]:
+            weights[project] = df_weights.iloc[:, index].tolist()
+            index += 1
+
+    for group in groups:
+        for project in projects[group]:
+            for version in versions[project]:
+                idpath = os.path.join(datapath, group, project, version, 'recommended_IRBL', techs[0])
+                if os.path.exists(idpath):
+                    for file in os.listdir(idpath):
+                        file1 = os.path.join(datapath, group, project, version, 'BM25', 'bm25+', file)
+                        df1 = pd.read_csv(file1, header=None).iloc[:, [0, 1]].copy()
+                        df1 = df1.rename(columns={df1.columns[0]: 'name', df1.columns[1]: 'score1'})
+                        df1[df1.columns[1:]] = df1[df1.columns[1:]].astype(float)
+                        file2 = os.path.join(datapath, group, project, version, 'BM25', 'bm25l', file)
+                        df2 = pd.read_csv(file2, header=None).iloc[:, [0, 1]].copy()
+                        df2 = df2.rename(columns={df2.columns[0]: 'name', df2.columns[1]: 'score2'})
+                        df2[df2.columns[1:]] = df2[df2.columns[1:]].astype(float)
+                        file3 = os.path.join(datapath, group, project, version, 'BM25', 'lucene', file)
+                        df3 = pd.read_csv(file3, header=None).iloc[:, [0, 1]].copy()
+                        df3 = df3.rename(columns={df3.columns[0]: 'name', df3.columns[1]: 'score3'})
+                        df3[df3.columns[1:]] = df3[df3.columns[1:]].astype(float)
+                        df = pd.merge(pd.merge(df1, df2, on='name'), df3, on='name')
+
+                        index = len(weights[project]) + 1
+                        df.iloc[:, 1:index] = df.iloc[:, 1:index] * weights[project]  # 赋权
+                        df[index] = df.iloc[:, 1:index].sum(axis=1)  # 计算总分
+                        result_df = df.iloc[:, [0, index]].copy()  # 只保留文件名和总分
+                        result_df = result_df.sort_values(result_df.columns[1], ascending=False)  # 按照总分降序排序
+
+                        savepath = os.path.join(datapath, group, project, version, 'BM25', 'weighted_BM25')
+                        if not os.path.exists(savepath):
+                            os.makedirs(savepath)
+                        result_df.to_csv(os.path.join(savepath, file), index=False, header=False)

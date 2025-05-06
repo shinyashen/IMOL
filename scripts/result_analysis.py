@@ -6,6 +6,7 @@ import config as conf
 
 techs = ['BugLocator', 'BRTracer', 'BLIA']
 proctechs = ['combined_IRBL', 'weighted_IRBL']
+BM25s = ['bm25+', 'bm25l', 'lucene', 'weighted_BM25']
 groups = ['Apache', 'Wildfly', 'Spring']
 projects = {
     'Apache': ['CAMEL', 'HBASE', 'HIVE'],
@@ -128,6 +129,9 @@ def cal_version_res(_tech, _group, _project, _version, _mode=None):
     if _tech in ['Qwen3-8B']:  # LLM result process
         loadpart1 = ''
         loadpart2 = 'result'
+    if _tech in BM25s:
+        loadpart1 = 'BM25'
+        loadpart2 = ''
     loadpath = os.path.join(datapath, _group, _project, _version, loadpart1, _tech, loadpart2)
     df_query = pd.DataFrame()
     query_num = 0
@@ -226,8 +230,6 @@ if __name__ == '__main__':
     # 计算3种IRBL
     name1 = 'IRBL20'
     result1 = []
-    MAPs1 = []
-    MRRs1 = []
     df1 = pd.DataFrame()
     for tech in techs:
         for group in groups:
@@ -286,8 +288,6 @@ if __name__ == '__main__':
     # 计算加权IRBL的200报告以后数据
     name3 = 'weighted_IRBL'
     result2 = []
-    MAPs2 = []
-    MRRs2 = []
     df3 = pd.DataFrame()
     for group in groups:
         for project in projects[group]:
@@ -298,7 +298,6 @@ if __name__ == '__main__':
         result2.append(res_analysis(a, b, c))
         df3 = pd.concat([df3, b], ignore_index=True)
     df4 = pd.DataFrame(result2)
-
     # 输出CSV
     df3.to_csv(os.path.join(datapath, f"{name3}_raw.csv"), index=False)
     df4.to_csv(os.path.join(datapath, f"{name3}.csv"), index=False)
@@ -306,13 +305,9 @@ if __name__ == '__main__':
     # 计算LLM处理后数据
     name4 = 'Qwen3-8B'
     result2 = []
-    MAPs2 = []
-    MRRs2 = []
     df5 = pd.DataFrame()
     for group in groups:
         for project in projects[group]:
-            if project == 'HIVE':
-                continue
             report_count = 0
             a, b = cal_project_res('Qwen3-8B', group, project, 'P200')
             result2.append(res_analysis('Qwen3-8B', a, b, False))
@@ -320,7 +315,65 @@ if __name__ == '__main__':
         result2.append(res_analysis(a, b, c))
         df5 = pd.concat([df5, b], ignore_index=True)
     df6 = pd.DataFrame(result2)
-
     # 输出CSV
     df5.to_csv(os.path.join(datapath, f"{name4}_raw.csv"), index=False)
     df6.to_csv(os.path.join(datapath, f"{name4}.csv"), index=False)
+
+    # 计算拓展查询后每个BM25算法的前200条数据，以及MAP和MRR组成的权值
+    name6 = 'BM25_B200'
+    result6 = []
+    MAPs6 = []
+    MRRs6 = []
+    df1 = pd.DataFrame()
+    for bm25 in BM25s:
+        dict_map = {}
+        dict_mrr = {}
+        for group in groups:
+            for project in projects[group]:
+                report_count = 0
+                a, b = cal_project_res(bm25, group, project, 'B200')
+                dict_res = res_analysis(bm25, a, b, False)
+                dict_map[project] = dict_res['MAP']
+                dict_mrr[project] = dict_res['MRR']
+                result6.append(dict_res)
+        MAPs6.append(dict_map)
+        MRRs6.append(dict_mrr)
+    for a, b, c in cal_res(BM25s, 'B200'):
+        result6.append(res_analysis(a, b, c))
+        df1 = pd.concat([df1, b], ignore_index=True)
+    df2 = pd.DataFrame(result6)
+    # 输出CSV
+    df1.to_csv(os.path.join(datapath, f"{name6}_raw.csv"), index=False)
+    df2.to_csv(os.path.join(datapath, f"{name6}.csv"), index=False)
+
+    df_MAP1 = pd.DataFrame(MAPs6)
+    df_MRR1 = pd.DataFrame(MRRs6)
+    print(df_MAP1)
+    print(df_MRR1)
+
+    for i in range(5):  # 5 projects
+        max_map = df_MAP1.iloc[:, i].max()
+        max_mrr = df_MRR1.iloc[:, i].max()
+        df_MAP1.iloc[:, i] = df_MAP1.iloc[:, i] / max_map
+        df_MRR1.iloc[:, i] = df_MRR1.iloc[:, i] / max_mrr
+    df_weight = df_MAP1 * df_MRR1
+    for i in range(5):  # 5 projects
+        df_weight.iloc[:, i] = df_weight.iloc[:, i] / df_weight.iloc[:, i].sum()
+    df_weight.to_csv(os.path.join(datapath, 'BM25_weight.txt'), index=False, header=False)
+
+    # 计算加权BM25的200报告以后数据
+    name7 = 'weighted_BM25'
+    result7 = []
+    df1 = pd.DataFrame()
+    for group in groups:
+        for project in projects[group]:
+            report_count = 0
+            a, b = cal_project_res('weighted_BM25', group, project, 'P200')
+            result7.append(res_analysis('weighted_BM25', a, b, False))
+    for a, b, c in cal_res(['weighted_BM25'], 'P200'):
+        result7.append(res_analysis(a, b, c))
+        df1 = pd.concat([df1, b], ignore_index=True)
+    df2 = pd.DataFrame(result7)
+    # 输出CSV
+    df1.to_csv(os.path.join(datapath, f"{name7}_raw.csv"), index=False)
+    df2.to_csv(os.path.join(datapath, f"{name7}.csv"), index=False)
