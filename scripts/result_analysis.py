@@ -129,6 +129,10 @@ def cal_version_res(_tech, _group, _project, _version, _mode=None):
     if _tech in ['Qwen3-8B']:  # LLM result process
         loadpart1 = ''
         loadpart2 = 'result'
+    if _tech in ['Qwen3-8B-mul']:  # LLM result process
+        _tech = 'Qwen3-8B'
+        loadpart1 = ''
+        loadpart2 = 'result2'
     if _tech in BM25s:
         loadpart1 = 'BM25'
         loadpart2 = ''
@@ -377,3 +381,20 @@ if __name__ == '__main__':
     # 输出CSV
     df1.to_csv(os.path.join(datapath, f"{name7}_raw.csv"), index=False)
     df2.to_csv(os.path.join(datapath, f"{name7}.csv"), index=False)
+
+    # 计算LLM二次处理后数据
+    name8 = 'Qwen3-8B-mul'
+    result8 = []
+    df5 = pd.DataFrame()
+    for group in groups:
+        for project in projects[group]:
+            report_count = 0
+            a, b = cal_project_res('Qwen3-8B-mul', group, project, 'P200')
+            result8.append(res_analysis('Qwen3-8B-mul', a, b, False))
+    for a, b, c in cal_res(['Qwen3-8B-mul'], 'P200'):
+        result8.append(res_analysis(a, b, c))
+        df5 = pd.concat([df5, b], ignore_index=True)
+    df6 = pd.DataFrame(result8)
+    # 输出CSV
+    df5.to_csv(os.path.join(datapath, f"{name8}_raw.csv"), index=False)
+    df6.to_csv(os.path.join(datapath, f"{name8}.csv"), index=False)
