@@ -158,7 +158,7 @@ def create_udb(_project):
             savepath = os.path.join(datapath, 'gitrepo', _project, 'und')
             if not os.path.exists(savepath):
                 os.makedirs(savepath)
-            output_file = os.path.abspath(os.path.join(savepath, f"{current_commit}.udb"))
+            output_file = os.path.abspath(os.path.join(savepath, f"{current_commit}.und"))
 
             print(f"Processing: {output_file}...",end='')
             if not os.path.exists(output_file):

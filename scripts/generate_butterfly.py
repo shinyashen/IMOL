@@ -87,9 +87,9 @@ if __name__ == "__main__":
     for group in groups:
         for project in projects[group]:
             dataset = project
-            csv_file = os.path.join(datapath, 'gitrepo', project, f'{dataset}_truly_buggy_file_result.csv')
-            und_folder = os.path.join(datapath, 'gitrepo', project, 'und')
-            output_folder = os.path.join(datapath, 'gitrepo', project, 'Butterfly_time')
+            csv_file = os.path.abspath(os.path.join(datapath, 'gitrepo', project, f'{dataset}_truly_buggy_file_result.csv'))
+            und_folder = os.path.abspath(os.path.join(datapath, 'gitrepo', project, 'und'))
+            output_folder = os.path.abspath(os.path.join(datapath, 'gitrepo', project, 'Butterfly_time'))
             if not os.path.exists(output_folder):
                 os.makedirs(output_folder)
 
