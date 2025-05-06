@@ -21,6 +21,7 @@ project_source_files = {
     'ROO': 1109,
     '/': 31986
 }
+report_types = ['PE', 'ST', 'NL']
 versions = {}
 answers = {}
 bug_counts = {}
@@ -122,7 +123,7 @@ def calculate_metrics(ordered_list, target_list, _tech, _group, _project, _versi
     return df_query
 
 
-def cal_version_res(_tech, _group, _project, _version, _mode=None):
+def cal_version_res(_tech, _group, _project, _version, _mode=None, _type=report_types):
     if _tech in techs or _tech in proctechs:
         loadpart1 = 'recommended_IRBL'
         loadpart2 = ''
@@ -142,6 +143,11 @@ def cal_version_res(_tech, _group, _project, _version, _mode=None):
 
     if os.path.exists(loadpath):
         for file in os.listdir(loadpath):
+            typepath = os.path.join(datapath, _group, _project, _version, 'qwen-max-latest', 'type')
+            with open(os.path.join(typepath, f'{dir}.txt'), 'r', encoding='utf-8') as f:
+                report_type = f.read()
+            if report_type not in report_types:
+                continue
             global report_count
             report_count += 1
             if _mode == 'B200' and report_count > 200: #  只统计前200份报告
@@ -162,19 +168,19 @@ def cal_version_res(_tech, _group, _project, _version, _mode=None):
     return df_query, query_num
 
 
-def cal_project_res(_tech, _group, _project, _mode=None):
+def cal_project_res(_tech, _group, _project, _mode=None, _type=report_types):
     df_query = pd.DataFrame()
     query_num = 0
 
     for version in versions[_project]:
-        a, b = cal_version_res(_tech, _group, _project, version, _mode)
+        a, b = cal_version_res(_tech, _group, _project, version, _mode, _type)
         df_query = pd.concat([df_query, a], ignore_index=True)
         query_num += b
 
     return df_query, query_num
 
 
-def cal_tech_res(_tech, _mode=None):
+def cal_tech_res(_tech, _mode=None, _type=report_types):
     df_query = pd.DataFrame()
     query_num = 0
 
@@ -182,16 +188,16 @@ def cal_tech_res(_tech, _mode=None):
         for project in projects[group]:
             global report_count
             report_count = 0
-            a, b = cal_project_res(_tech, group, project, _mode)
+            a, b = cal_project_res(_tech, group, project, _mode, _type)
             df_query = pd.concat([df_query, a], ignore_index=True)
             query_num += b
 
     return df_query, query_num
 
 
-def cal_res(_techlist, _mode=None):
+def cal_res(_techlist, _mode=None, _type=report_types):
     for tech in _techlist:
-        a, b = cal_tech_res(tech, _mode)
+        a, b = cal_tech_res(tech, _mode, _type)
         yield tech, a, b
 
 
