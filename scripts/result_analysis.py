@@ -143,16 +143,16 @@ def cal_version_res(_tech, _group, _project, _version, _mode=None, _type=report_
 
     if os.path.exists(loadpath):
         for file in os.listdir(loadpath):
-            typepath = os.path.join(datapath, _group, _project, _version, 'qwen-max-latest', 'type')
-            with open(os.path.join(typepath, f'{dir}.txt'), 'r', encoding='utf-8') as f:
-                report_type = f.read()
-            if report_type not in report_types:
-                continue
             global report_count
             report_count += 1
             if _mode == 'B200' and report_count > 200: #  只统计前200份报告
                 break
             if _mode == 'P200' and report_count <= 200: #  只统计200份以后的报告
+                continue
+            typepath = os.path.join(datapath, _group, _project, _version, 'qwen-max-latest', 'type')
+            with open(os.path.join(typepath, file), 'r', encoding='utf-8') as f:
+                report_type = f.read()
+            if report_type not in _type:
                 continue
             bug_id = os.path.splitext(file)[0]
             java_list = pd.read_csv(os.path.join(loadpath, file), header=None).iloc[:, 0].tolist()
@@ -404,3 +404,42 @@ if __name__ == '__main__':
     # 输出CSV
     df5.to_csv(os.path.join(datapath, f"{name8}_raw.csv"), index=False)
     df6.to_csv(os.path.join(datapath, f"{name8}.csv"), index=False)
+
+    # 计算按报告分类的3种IRBL
+    for type in report_types:
+        name1 = f'IRBL20_{type}'
+        result1 = []
+        df1 = pd.DataFrame()
+        for tech in techs:
+            for group in groups:
+                for project in projects[group]:
+                    report_count = 0
+                    a, b = cal_project_res(tech, group, project, None, [type])
+                    result1.append(res_analysis(tech, a, b, False))
+        for a, b, c in cal_res(techs, None, [type]):
+            result1.append(res_analysis(a, b, c))
+            df1 = pd.concat([df1, b], ignore_index=True)
+        df2 = pd.DataFrame(result1)
+        # 输出CSV
+        df1.to_csv(os.path.join(datapath, f"{name1}_raw.csv"), index=False)
+        df2.to_csv(os.path.join(datapath, f"{name1}.csv"), index=False)
+
+    # 计算LLM二次处理后数据
+    for type in report_types:
+        name8 = f'Qwen3-8B-mul-{type}'
+        result8 = []
+        df5 = pd.DataFrame()
+        for group in groups:
+            for project in projects[group]:
+                if project == 'HIVE':
+                    continue
+                report_count = 0
+                a, b = cal_project_res('Qwen3-8B-mul', group, project, 'P200', [type])
+                result8.append(res_analysis('Qwen3-8B-mul', a, b, False))
+        for a, b, c in cal_res(['Qwen3-8B-mul'], 'P200', [type]):
+            result8.append(res_analysis(a, b, c))
+            df5 = pd.concat([df5, b], ignore_index=True)
+        df6 = pd.DataFrame(result8)
+        # 输出CSV
+        df5.to_csv(os.path.join(datapath, f"{name8}_raw.csv"), index=False)
+        df6.to_csv(os.path.join(datapath, f"{name8}.csv"), index=False)
